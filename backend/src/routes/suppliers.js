@@ -46,12 +46,43 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Limpiar CUIT (solo números)
+    // Limpiar y validar CUIT
     const cleanCuit = cuit.replace(/\D/g, '');
     if (cleanCuit.length !== 11) {
       return res.status(400).json({
         success: false,
-        message: 'El CUIT debe tener 11 dígitos'
+        message: 'El CUIT debe tener exactamente 11 dígitos'
+      });
+    }
+
+    // Validar teléfono si se proporciona
+    if (phone && !/^[\d\s\-\(\)\+]*$/.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'El teléfono solo puede contener números, espacios, guiones, paréntesis y el signo +'
+      });
+    }
+
+    // Validar que Provincia y Ciudad solo contengan letras
+    if (province && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s\-\.]*$/.test(province)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La provincia solo puede contener letras, espacios y guiones'
+      });
+    }
+
+    if (city && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s\-\.]*$/.test(city)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La ciudad solo puede contener letras, espacios y guiones'
+      });
+    }
+
+    // Validar longitud de notas
+    if (notes && notes.length > 150) {
+      return res.status(400).json({
+        success: false,
+        message: 'Las notas no pueden exceder los 150 caracteres'
       });
     }
 
@@ -69,12 +100,12 @@ router.post('/', async (req, res) => {
       category,
       business_name,
       fiscal_address,
-      phone,
-      email,
+      phone: phone || null,
+      email: email || null,
       province,
       city,
-      postal_code,
-      notes
+      postal_code: postal_code || null,
+      notes: notes || null
     });
 
     res.status(201).json({
@@ -115,7 +146,7 @@ router.put('/:id', async (req, res) => {
       if (cleanCuit.length !== 11) {
         return res.status(400).json({
           success: false,
-          message: 'El CUIT debe tener 11 dígitos'
+          message: 'El CUIT debe tener exactamente 11 dígitos'
         });
       }
 
@@ -128,17 +159,48 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // Validar teléfono si se proporciona
+    if (phone && !/^[\d\s\-\(\)\+]*$/.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'El teléfono solo puede contener números, espacios, guiones, paréntesis y el signo +'
+      });
+    }
+
+    // Validar que Provincia y Ciudad solo contengan letras
+    if (province && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s\-\.]*$/.test(province)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La provincia solo puede contener letras, espacios y guiones'
+      });
+    }
+
+    if (city && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s\-\.]*$/.test(city)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La ciudad solo puede contener letras, espacios y guiones'
+      });
+    }
+
+    // Validar longitud de notas
+    if (notes && notes.length > 150) {
+      return res.status(400).json({
+        success: false,
+        message: 'Las notas no pueden exceder los 150 caracteres'
+      });
+    }
+
     await supplier.update({
       cuit: cuit ? cuit.replace(/\D/g, '') : supplier.cuit,
       category: category || supplier.category,
       business_name: business_name || supplier.business_name,
       fiscal_address: fiscal_address || supplier.fiscal_address,
-      phone,
-      email,
+      phone: phone || null,
+      email: email || null,
       province: province || supplier.province,
       city: city || supplier.city,
-      postal_code,
-      notes
+      postal_code: postal_code || null,
+      notes: notes || null
     });
 
     res.json({

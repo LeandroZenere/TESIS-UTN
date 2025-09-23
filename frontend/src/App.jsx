@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './components/Login'
 import Suppliers from './components/Suppliers'
+import Invoices from './components/Invoices'
 
 function AppContent() {
   const { user, loading, logout } = useAuth()
@@ -17,6 +18,10 @@ function AppContent() {
 
   if (currentView === 'suppliers') {
     return <Suppliers onBack={() => setCurrentView('dashboard')} />
+  }
+
+  if (currentView === 'invoices') {
+    return <Invoices onBack={() => setCurrentView('dashboard')} />
   }
 
   return (
@@ -62,7 +67,10 @@ function AppContent() {
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '10px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
             <h3>Facturas</h3>
             <p>Crear y gestionar facturas</p>
-            <button style={{ backgroundColor: '#4CAF50', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '5px', cursor: 'pointer' }}>
+            <button 
+              onClick={() => setCurrentView('invoices')}
+              style={{ backgroundColor: '#4CAF50', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '5px', cursor: 'pointer' }}
+            >
               Ver Facturas
             </button>
           </div>

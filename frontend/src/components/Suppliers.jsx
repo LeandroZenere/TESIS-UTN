@@ -57,12 +57,77 @@ export default function Suppliers({ onBack }) {
     }
   }
 
+  // Validaciones en tiempo real
+  const validateCuit = (value) => {
+    return /^\d{11}$|^\d{2}-\d{8}-\d{1}$/.test(value)
+  }
+
+  const validatePhone = (value) => {
+    if (!value) return true // Teléfono es opcional
+    return /^[\d\s\-\(\)\+]*$/.test(value)
+  }
+
+  const validateTextOnly = (value) => {
+    if (!value) return true
+    return /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s\-\.]*$/.test(value)
+  }
+
+  const handleCuitChange = (e) => {
+    const value = e.target.value.replace(/[^\d\-]/g, '')
+    setFormData({...formData, cuit: value})
+  }
+
+  const handlePhoneChange = (e) => {
+    const value = e.target.value.replace(/[^\d\s\-\(\)\+]/g, '')
+    setFormData({...formData, phone: value})
+  }
+
+  const handleProvinceChange = (e) => {
+    const value = e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s\-\.]/g, '')
+    setFormData({...formData, province: value})
+  }
+
+  const handleCityChange = (e) => {
+    const value = e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s\-\.]/g, '')
+    setFormData({...formData, city: value})
+  }
+
+  const handleNotesChange = (e) => {
+    const value = e.target.value.slice(0, 150)
+    setFormData({...formData, notes: value})
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
 
+    // Validaciones obligatorias
     if (!formData.cuit || !formData.business_name || !formData.fiscal_address || !formData.province || !formData.city) {
       setError('Complete los campos obligatorios: CUIT, Razón Social, Domicilio Fiscal, Provincia y Ciudad')
+      return
+    }
+
+    // Validar formato de CUIT
+    const cleanCuit = formData.cuit.replace(/\D/g, '')
+    if (cleanCuit.length !== 11) {
+      setError('El CUIT debe tener exactamente 11 dígitos')
+      return
+    }
+
+    // Validar formato de teléfono
+    if (formData.phone && !validatePhone(formData.phone)) {
+      setError('El teléfono solo puede contener números, espacios, guiones, paréntesis y el signo +')
+      return
+    }
+
+    // Validar que Provincia y Ciudad solo contengan letras
+    if (formData.province && !validateTextOnly(formData.province)) {
+      setError('La provincia solo puede contener letras, espacios y guiones')
+      return
+    }
+
+    if (formData.city && !validateTextOnly(formData.city)) {
+      setError('La ciudad solo puede contener letras, espacios y guiones')
       return
     }
 
@@ -192,15 +257,21 @@ export default function Suppliers({ onBack }) {
               <input
                 type="text"
                 value={formData.cuit}
-                onChange={(e) => setFormData({...formData, cuit: e.target.value})}
+                onChange={handleCuitChange}
                 placeholder="20-12345678-9"
+                maxLength="13"
                 style={{
                   width: '100%',
                   padding: '10px',
-                  border: '1px solid #ddd',
+                  border: `1px solid ${formData.cuit && !validateCuit(formData.cuit.replace(/\D/g, '')) ? '#f44336' : '#ddd'}`,
                   borderRadius: '5px'
                 }}
               />
+              {formData.cuit && !validateCuit(formData.cuit.replace(/\D/g, '')) && (
+                <small style={{ color: '#f44336', fontSize: '12px' }}>
+                  El CUIT debe tener 11 dígitos
+                </small>
+              )}
             </div>
 
             <div>
@@ -268,15 +339,20 @@ export default function Suppliers({ onBack }) {
               <input
                 type="text"
                 value={formData.province}
-                onChange={(e) => setFormData({...formData, province: e.target.value})}
-                placeholder="Provincia"
+                onChange={handleProvinceChange}
+                placeholder="Buenos Aires"
                 style={{
                   width: '100%',
                   padding: '10px',
-                  border: '1px solid #ddd',
+                  border: `1px solid ${formData.province && !validateTextOnly(formData.province) ? '#f44336' : '#ddd'}`,
                   borderRadius: '5px'
                 }}
               />
+              {formData.province && !validateTextOnly(formData.province) && (
+                <small style={{ color: '#f44336', fontSize: '12px' }}>
+                  Solo se permiten letras, espacios y guiones
+                </small>
+              )}
             </div>
 
             <div>
@@ -286,15 +362,20 @@ export default function Suppliers({ onBack }) {
               <input
                 type="text"
                 value={formData.city}
-                onChange={(e) => setFormData({...formData, city: e.target.value})}
-                placeholder="Ciudad"
+                onChange={handleCityChange}
+                placeholder="La Plata"
                 style={{
                   width: '100%',
                   padding: '10px',
-                  border: '1px solid #ddd',
+                  border: `1px solid ${formData.city && !validateTextOnly(formData.city) ? '#f44336' : '#ddd'}`,
                   borderRadius: '5px'
                 }}
               />
+              {formData.city && !validateTextOnly(formData.city) && (
+                <small style={{ color: '#f44336', fontSize: '12px' }}>
+                  Solo se permiten letras, espacios y guiones
+                </small>
+              )}
             </div>
 
             <div>
@@ -324,15 +405,21 @@ export default function Suppliers({ onBack }) {
               <input
                 type="text"
                 value={formData.phone}
-                onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                onChange={handlePhoneChange}
                 placeholder="011-1234-5678"
+                maxLength="20"
                 style={{
                   width: '100%',
                   padding: '10px',
-                  border: '1px solid #ddd',
+                  border: `1px solid ${formData.phone && !validatePhone(formData.phone) ? '#f44336' : '#ddd'}`,
                   borderRadius: '5px'
                 }}
               />
+              {formData.phone && !validatePhone(formData.phone) && (
+                <small style={{ color: '#f44336', fontSize: '12px' }}>
+                  Solo se permiten números, espacios, guiones, paréntesis y el signo +
+                </small>
+              )}
             </div>
 
             <div>
@@ -360,9 +447,10 @@ export default function Suppliers({ onBack }) {
             </label>
             <textarea
               value={formData.notes}
-              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              onChange={handleNotesChange}
               placeholder="Observaciones adicionales"
               rows="3"
+              maxLength="150"
               style={{
                 width: '100%',
                 padding: '10px',
@@ -371,6 +459,14 @@ export default function Suppliers({ onBack }) {
                 resize: 'vertical'
               }}
             />
+            <div style={{ 
+              textAlign: 'right', 
+              fontSize: '12px', 
+              color: formData.notes.length > 140 ? '#f44336' : '#666',
+              marginTop: '5px'
+            }}>
+              {formData.notes.length}/150 caracteres
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '10px' }}>
