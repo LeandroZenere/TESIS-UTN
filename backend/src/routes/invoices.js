@@ -2,11 +2,45 @@ const express = require('express');
 const { Invoice, Supplier, User } = require('../models');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { Op } = require('sequelize');
+const upload = require('../middleware/upload');
+const path = require('path');
+const fs = require('fs');
 
 const router = express.Router();
 
+// GET /api/invoices/payment-file/:filename - Servir archivo de comprobante
+router.get('/payment-file/:filename', (req, res) => {
+  try {
+    const filename = req.params.filename;
+    // CORREGIDO: Usar ../../uploads/payments en lugar de ../uploads/payments
+    const filePath = path.join(__dirname, '../../uploads/payments', filename);
+    
+    console.log('DEBUG: Buscando archivo:', filename);
+    console.log('DEBUG: Ruta completa:', filePath);
+    console.log('DEBUG: Archivo existe?', fs.existsSync(filePath));
+    
+    if (fs.existsSync(filePath)) {
+      console.log('DEBUG: Enviando archivo...');
+      res.sendFile(path.resolve(filePath));
+    } else {
+      console.log('DEBUG: Archivo NO encontrado');
+      res.status(404).json({
+        success: false,
+        message: 'Archivo no encontrado'
+      });
+    }
+  } catch (error) {
+    console.error('Error sirviendo archivo:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
 // Aplicar autenticación a todas las rutas
 router.use(authenticateToken);
+
 
 // GET /api/invoices - Listar todas las facturas
 router.get('/', async (req, res) => {
@@ -40,7 +74,7 @@ router.get('/', async (req, res) => {
       if (date_to) where.invoice_date[Op.lte] = date_to;
     }
     
-    // Búsqueda por número de factura
+    // Búsqueda por número de factura - CORREGIDO
     if (search) {
       where.invoice_number = { [Op.like]: `%${search}%` };
     }
@@ -316,8 +350,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// PUT /api/invoices/:id/mark-paid - Marcar factura como pagada - Solo Admin
-router.put('/:id/mark-paid', requireAdmin, async (req, res) => {
+// PUT /api/invoices/:id/mark-paid - Marcar factura como pagada CON comprobante
+router.put('/:id/mark-paid', requireAdmin, upload.single('payment_file'), async (req, res) => {
   try {
     const invoice = await Invoice.findByPk(req.params.id);
     
@@ -336,14 +370,27 @@ router.put('/:id/mark-paid', requireAdmin, async (req, res) => {
     }
 
     const { admin_notes } = req.body;
-
-    await invoice.update({
+    const updateData = {
       status: 'pagada',
       is_paid: true,
       paid_date: new Date(),
       paid_by: req.user.id,
       admin_notes: admin_notes || invoice.admin_notes
-    });
+    };
+
+    // Si se subió un archivo, guardarlo
+if (req.file) {
+  console.log('DEBUG: Archivo recibido:', req.file.filename);
+  updateData.payment_proof = req.file.filename;
+} else {
+  console.log('DEBUG: No se recibió archivo');
+}
+
+console.log('DEBUG: updateData final:', updateData);
+
+await invoice.update(updateData);
+
+console.log('DEBUG: Factura actualizada con payment_proof:', invoice.payment_proof);
 
     res.json({
       success: true,
@@ -359,6 +406,65 @@ router.put('/:id/mark-paid', requireAdmin, async (req, res) => {
     });
   }
 });
+
+// POST /api/invoices/:id/payment-file - Subir/actualizar comprobante
+router.post('/:id/payment-file', requireAdmin, upload.single('payment_file'), async (req, res) => {
+  try {
+    const invoice = await Invoice.findByPk(req.params.id);
+    
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: 'Factura no encontrada'
+      });
+    }
+
+    if (!invoice.is_paid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Solo se puede subir comprobante a facturas pagadas'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se recibió ningún archivo'
+      });
+    }
+
+    // Eliminar archivo anterior si existe
+    if (invoice.payment_proof) {
+      const oldFilePath = path.join('uploads/payments', invoice.payment_proof);
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlinkSync(oldFilePath);
+      }
+    }
+
+    // Actualizar con nuevo archivo
+    await invoice.update({
+      payment_proof: req.file.filename
+    });
+
+    res.json({
+      success: true,
+      message: 'Comprobante subido exitosamente',
+      data: { 
+        invoice,
+        filename: req.file.filename
+      }
+    });
+
+  } catch (error) {
+    console.error('Error subiendo comprobante:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+
 
 // GET /api/invoices/reports/summary - Resumen de facturas
 router.get('/reports/summary', async (req, res) => {

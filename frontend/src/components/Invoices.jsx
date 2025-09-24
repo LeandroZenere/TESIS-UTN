@@ -11,6 +11,10 @@ export default function Invoices({ onBack }) {
   const [editingInvoice, setEditingInvoice] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [availableSubcategories, setAvailableSubcategories] = useState([])
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState(null)
+  const [paymentFile, setPaymentFile] = useState(null)
 
   // Categorías con subcategorías
   const categories = {
@@ -31,15 +35,14 @@ export default function Invoices({ onBack }) {
     due_date: '',
     load_date: new Date().toISOString().split('T')[0],
     payment_type: 'cuenta_corriente',
-    subtotal: '',
-    tax_details: [], // Array de objetos {type, rate, amount}
+    tax_details: [], // Array de objetos {id, type, label, rate, subtotal, amount}
     no_gravado: '',
     expense_category: '',
     expense_subcategory: '',
     notes: ''
   })
 
-  // Tipos de impuestos disponibles
+// Tipos de impuestos disponibles
   const taxTypes = [
     { id: 'iva_21', label: 'IVA 21%', rate: 0.21 },
     { id: 'iva_27', label: 'IVA 27%', rate: 0.27 },
@@ -49,12 +52,24 @@ export default function Invoices({ onBack }) {
   ]
 
   const [selectedSupplier, setSelectedSupplier] = useState(null)
-  const [availableSubcategories, setAvailableSubcategories] = useState([])
 
   useEffect(() => {
     if (token) {
       loadInvoices()
       loadSuppliers()
+    }
+
+    // Prevenir cambios con rueda del mouse en inputs numéricos
+    const handleWheelOnNumberInputs = (e) => {
+      if (e.target.type === 'number') {
+        e.preventDefault()
+      }
+    }
+
+    document.addEventListener('wheel', handleWheelOnNumberInputs, { passive: false })
+
+    return () => {
+      document.removeEventListener('wheel', handleWheelOnNumberInputs)
     }
   }, [token])
 
@@ -107,40 +122,21 @@ export default function Invoices({ onBack }) {
   }
 
   const calculateTotal = () => {
-    const subtotal = parseFloat(formData.subtotal) || 0
     const taxesTotal = formData.tax_details.reduce((sum, tax) => sum + parseFloat(tax.amount || 0), 0)
     const noGravado = parseFloat(formData.no_gravado) || 0
+    const subtotalTotal = formData.tax_details.reduce((sum, tax) => sum + parseFloat(tax.subtotal || 0), 0)
     
-    return (subtotal + taxesTotal + noGravado).toFixed(2)
-  }
-
-  const handleSubtotalChange = (e) => {
-    const subtotal = e.target.value
-    setFormData(prev => {
-      // Recalcular todos los impuestos basados en el nuevo subtotal
-      const updatedTaxDetails = prev.tax_details.map(tax => ({
-        ...tax,
-        amount: subtotal ? (parseFloat(subtotal) * tax.rate).toFixed(2) : ''
-      }))
-      
-      return {
-        ...prev,
-        subtotal,
-        tax_details: updatedTaxDetails
-      }
-    })
+    return (subtotalTotal + taxesTotal + noGravado).toFixed(2)
   }
 
   const addTaxDetail = (taxType) => {
-    const subtotal = parseFloat(formData.subtotal) || 0
-    const calculatedAmount = subtotal * taxType.rate
-    
     const newTaxDetail = {
       id: Date.now(),
       type: taxType.id,
       label: taxType.label,
       rate: taxType.rate,
-      amount: calculatedAmount.toFixed(2)
+      subtotal: '',
+      amount: ''
     }
     
     setFormData(prev => ({
@@ -156,6 +152,19 @@ export default function Invoices({ onBack }) {
     }))
   }
 
+  const updateTaxSubtotal = (id, subtotal) => {
+    setFormData(prev => ({
+      ...prev,
+      tax_details: prev.tax_details.map(tax => {
+        if (tax.id === id) {
+          const calculatedAmount = subtotal ? (parseFloat(subtotal) * tax.rate).toFixed(2) : ''
+          return { ...tax, subtotal, amount: calculatedAmount }
+        }
+        return tax
+      })
+    }))
+  }
+
   const updateTaxAmount = (id, amount) => {
     setFormData(prev => ({
       ...prev,
@@ -165,12 +174,65 @@ export default function Invoices({ onBack }) {
     }))
   }
 
+  // Validación de fechas
+  const validateDates = () => {
+    if (formData.invoice_date && formData.due_date) {
+      const emissionDate = new Date(formData.invoice_date)
+      const dueDate = new Date(formData.due_date)
+      
+      if (dueDate < emissionDate) {
+        return 'La fecha de vencimiento no puede ser anterior a la fecha de emisión'
+      }
+    }
+    return null
+  }
+
+  // Validación de facturas duplicadas
+  const validateDuplicateInvoice = () => {
+    if (!editingInvoice && formData.supplier_id && formData.punto_venta && formData.numero_factura) {
+      const fullInvoiceNumber = `${formData.invoice_type}-${formData.punto_venta.padStart(4, '0')}-${formData.numero_factura.padStart(8, '0')}`
+      
+      const duplicateInvoice = invoices.find(invoice => 
+        invoice.supplier_id === parseInt(formData.supplier_id) && 
+        invoice.invoice_number === fullInvoiceNumber
+      )
+      
+      if (duplicateInvoice) {
+        return `Ya existe una factura ${fullInvoiceNumber} para este proveedor`
+      }
+    }
+    return null
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
 
+    // Validar fechas
+    const dateError = validateDates()
+    if (dateError) {
+      setError(dateError)
+      return
+    }
+
+    // Validar facturas duplicadas
+    const duplicateError = validateDuplicateInvoice()
+    if (duplicateError) {
+      setError(duplicateError)
+      return
+    }
+
     if (!formData.supplier_id || !formData.punto_venta || !formData.numero_factura || !formData.invoice_date || !formData.expense_category) {
       setError('Complete los campos obligatorios: Proveedor, Punto de Venta, Número, Fecha de Emisión y Categoría')
+      return
+    }
+
+    // Validar que al menos haya un impuesto con subtotal o no_gravado
+    const hasTaxes = formData.tax_details.some(tax => parseFloat(tax.subtotal) > 0)
+    const hasNoGravado = parseFloat(formData.no_gravado) > 0
+    
+    if (!hasTaxes && !hasNoGravado) {
+      setError('Debe ingresar al menos un subtotal para impuestos o un monto en "No Gravado"')
       return
     }
 
@@ -183,7 +245,7 @@ export default function Invoices({ onBack }) {
       const dataToSend = {
         ...formData,
         invoice_number: fullInvoiceNumber,
-        otros_impuestos: formData.no_gravado // Mapear no_gravado a otros_impuestos para backend
+        otros_impuestos: formData.no_gravado
       }
       
       const url = editingInvoice 
@@ -218,38 +280,156 @@ export default function Invoices({ onBack }) {
     }
   }
 
-  const handleMarkAsPaid = async (invoiceId) => {
+  const handleMarkAsPaid = async (invoice) => {
     if (!user || user.role !== 'admin') {
       setError('Solo los administradores pueden marcar facturas como pagadas')
       return
     }
 
+    setSelectedInvoiceForPayment(invoice)
+    setShowPaymentModal(true)
+  }
+
+  const confirmPayment = async () => {
+    if (!selectedInvoiceForPayment) return
+
     try {
-      const response = await fetch(`http://localhost:3001/api/invoices/${invoiceId}/mark-paid`, {
+      setLoading(true)
+      
+      const formData = new FormData()
+      formData.append('admin_notes', 'Marcada como pagada desde el sistema')
+      
+      if (paymentFile) {
+        formData.append('payment_file', paymentFile)
+      }
+
+      const response = await fetch(`http://localhost:3001/api/invoices/${selectedInvoiceForPayment.id}/mark-paid`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          admin_notes: 'Marcada como pagada desde el sistema'
-        })
+        body: formData
       })
 
       const data = await response.json()
 
       if (data.success) {
         await loadInvoices()
+        setShowPaymentModal(false)
+        setSelectedInvoiceForPayment(null)
+        setPaymentFile(null)
+        setError('')
       } else {
         setError(data.message || 'Error al marcar como pagada')
       }
     } catch (error) {
       setError(`Error de conexión: ${error.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDownloadInvoiceReport = async (invoice) => {
+    try {
+      // Verificar múltiples posibles campos para el comprobante de pago
+      const paymentFile = invoice.payment_file_path || invoice.payment_file || invoice.payment_document || null
+      
+      // Crear un PDF temporal del lado del cliente con la información disponible
+      // mientras se implementa la ruta del backend
+      const invoiceData = {
+        numero: invoice.invoice_number,
+        proveedor: invoice.supplier.business_name,
+        cuit: invoice.supplier.cuit,
+        fecha_emision: new Date(invoice.invoice_date).toLocaleDateString('es-ES'),
+        fecha_vencimiento: invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('es-ES') : 'N/A',
+        fecha_pago: invoice.paid_date ? new Date(invoice.paid_date).toLocaleDateString('es-ES') : 'N/A',
+        total: parseFloat(invoice.total_amount).toLocaleString('es-ES', { minimumFractionDigits: 2 }),
+        categoria: invoice.expense_category,
+        subcategoria: invoice.expense_subcategory || 'N/A',
+        tipo_pago: invoice.payment_type,
+        notas: invoice.notes || 'Sin observaciones',
+        comprobante: paymentFile
+      }
+
+      // Crear contenido HTML para el reporte
+      const htmlContent = `
+        <html>
+          <head>
+            <title>Reporte de Factura ${invoiceData.numero}</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+              .info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+              .info-table th, .info-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              .info-table th { background-color: #f2f2f2; }
+              .status { color: #4CAF50; font-weight: bold; }
+              .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc; font-size: 12px; color: #666; }
+              .payment-section { margin-top: 20px; padding: 15px; border-radius: 5px; }
+              .with-payment { background-color: #e8f5e8; }
+              .without-payment { background-color: #fff3cd; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>REPORTE DE FACTURA</h1>
+              <h2>${invoiceData.numero}</h2>
+            </div>
+            
+            <table class="info-table">
+              <tr><th>Proveedor</th><td>${invoiceData.proveedor}</td></tr>
+              <tr><th>CUIT</th><td>${invoiceData.cuit}</td></tr>
+              <tr><th>Fecha de Emisión</th><td>${invoiceData.fecha_emision}</td></tr>
+              <tr><th>Fecha de Vencimiento</th><td>${invoiceData.fecha_vencimiento}</td></tr>
+              <tr><th>Fecha de Pago</th><td>${invoiceData.fecha_pago}</td></tr>
+              <tr><th>Total</th><td>${invoiceData.total}</td></tr>
+              <tr><th>Categoría</th><td>${invoiceData.categoria}</td></tr>
+              <tr><th>Subcategoría</th><td>${invoiceData.subcategoria}</td></tr>
+              <tr><th>Tipo de Pago</th><td>${invoiceData.tipo_pago}</td></tr>
+              <tr><th>Estado</th><td><span class="status">PAGADA</span></td></tr>
+              <tr><th>Notas</th><td>${invoiceData.notas}</td></tr>
+            </table>
+            
+            <div class="payment-section ${invoiceData.comprobante ? 'with-payment' : 'without-payment'}">
+              ${invoiceData.comprobante ? 
+                `<h3>📎 Comprobante de Pago</h3>
+                 <p><strong>Archivo:</strong> ${invoiceData.comprobante}</p>
+                 <p><small>Para visualizar el comprobante, acceda al sistema de gestión de facturas y utilice la opción "Ver Comprobante Actual" en la sección de edición de la factura.</small></p>
+                 <p><small><strong>Ruta del archivo:</strong> http://localhost:3001/uploads/payments/${invoiceData.comprobante}</small></p>` : 
+                `<h3>⚠️ Comprobante de Pago</h3>
+                 <p><strong>Estado:</strong> No hay comprobante de pago adjunto a esta factura.</p>
+                 <p><small>El administrador puede cargar el comprobante posteriormente a través del sistema de gestión.</small></p>`
+              }
+            </div>
+            
+            <div class="footer">
+              <p>Reporte generado el ${new Date().toLocaleString('es-ES')}</p>
+              <p>Sistema de Gestión de Facturas - Versión 1.0</p>
+              <p><small>Este reporte incluye toda la información disponible al momento de la generación.</small></p>
+            </div>
+          </body>
+        </html>
+      `
+
+      // Crear y descargar el archivo HTML
+      const blob = new Blob([htmlContent], { type: 'text/html' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.style.display = 'none'
+      a.href = url
+      a.download = `reporte_factura_${invoice.invoice_number.replace(/[\/\\:*?"<>|]/g, '_')}.html`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+    } catch (error) {
+      setError(`Error al generar el reporte: ${error.message}`)
     }
   }
 
   const handleEdit = (invoice) => {
-    if (invoice.is_paid) {
+    // Solo restringir edición para usuarios comunes en facturas pagadas
+    if (invoice.is_paid && user.role !== 'admin') {
       setError('No se puede editar una factura que ya está pagada')
       return
     }
@@ -263,18 +443,13 @@ export default function Invoices({ onBack }) {
     setFormData({
       supplier_id: invoice.supplier_id,
       invoice_type: invoiceParts[0] || '',
-      punto_venta: puntoVenta.replace(/^0+/, '') || puntoVenta, // Remover ceros a la izquierda
+      punto_venta: puntoVenta.replace(/^0+/, '') || puntoVenta,
       numero_factura: numeroFactura.replace(/^0+/, '') || numeroFactura,
       invoice_date: invoice.invoice_date,
       due_date: invoice.due_date || '',
       load_date: invoice.load_date || new Date().toISOString().split('T')[0],
       payment_type: invoice.payment_type,
-      subtotal: invoice.subtotal,
-      iva_21: invoice.iva_21,
-      iva_27: invoice.iva_27,
-      iva_105: invoice.iva_105,
-      perc_iva: invoice.perc_iva,
-      perc_iibb: invoice.perc_iibb,
+      tax_details: [], // Se podría cargar desde el backend si está disponible
       no_gravado: invoice.otros_impuestos,
       expense_category: invoice.expense_category,
       expense_subcategory: invoice.expense_subcategory || '',
@@ -302,7 +477,6 @@ export default function Invoices({ onBack }) {
       due_date: '',
       load_date: new Date().toISOString().split('T')[0],
       payment_type: 'cuenta_corriente',
-      subtotal: '',
       tax_details: [],
       no_gravado: '',
       expense_category: '',
@@ -340,7 +514,7 @@ export default function Invoices({ onBack }) {
     if (selectedSupplier.category === 'responsable_inscripto') {
       return ['A', 'B']
     } else {
-      return ['B', 'C'] // Monotributista e IVA Exento no pueden emitir factura A
+      return ['B', 'C']
     }
   }
 
@@ -367,6 +541,9 @@ export default function Invoices({ onBack }) {
   })
 
   if (showForm) {
+    // Verificar si es una factura pagada siendo editada por admin
+    const isPaidInvoiceEdit = editingInvoice && editingInvoice.is_paid && user.role === 'admin'
+    
     return (
       <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
         <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -387,7 +564,8 @@ export default function Invoices({ onBack }) {
             ← Volver
           </button>
           <h2 style={{ margin: 0, color: '#333' }}>
-            {editingInvoice ? 'Editar Factura' : 'Cargar Nueva Factura'}
+            {isPaidInvoiceEdit ? 'Ver Factura Pagada - Gestionar Comprobante' : 
+             editingInvoice ? 'Editar Factura' : 'Cargar Nueva Factura'}
           </h2>
         </div>
 
@@ -404,6 +582,204 @@ export default function Invoices({ onBack }) {
           </div>
         )}
 
+        {/* Alerta especial para admin editando factura pagada */}
+        {isPaidInvoiceEdit && (
+          <div style={{
+            backgroundColor: '#e3f2fd',
+            border: '1px solid #90caf9',
+            color: '#1565c0',
+            padding: '15px',
+            borderRadius: '5px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <span style={{ fontSize: '20px' }}>📎</span>
+            <div>
+              <strong>Modo de visualización:</strong> Esta factura ya está pagada. Solo puede gestionar el comprobante de pago. 
+              Los datos de la factura no son editables para mantener la integridad contable.
+            </div>
+          </div>
+        )}
+
+        {/* Formulario de comprobante para facturas pagadas */}
+        {isPaidInvoiceEdit ? (
+          <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '10px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+          }}>
+            {/* Resumen de la factura (solo lectura) */}
+            <div style={{
+              backgroundColor: '#f8f9fa',
+              padding: '20px',
+              borderRadius: '8px',
+              marginBottom: '30px'
+            }}>
+              <h3 style={{ color: '#333', marginBottom: '15px' }}>Información de la Factura</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div><strong>Número:</strong> {editingInvoice.invoice_number}</div>
+                <div><strong>Proveedor:</strong> {editingInvoice.supplier?.business_name}</div>
+                <div><strong>Fecha de Emisión:</strong> {new Date(editingInvoice.invoice_date).toLocaleDateString('es-ES')}</div>
+                <div><strong>Total:</strong> ${parseFloat(editingInvoice.total_amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</div>
+                <div><strong>Estado:</strong> <span style={{ color: '#4CAF50', fontWeight: 'bold' }}>PAGADA</span></div>
+                <div><strong>Fecha de Pago:</strong> {editingInvoice.paid_date ? new Date(editingInvoice.paid_date).toLocaleDateString('es-ES') : 'N/A'}</div>
+              </div>
+            </div>
+
+            {/* Sección de comprobante */}
+            <div style={{ marginBottom: '30px' }}>
+              <h3 style={{ color: '#333', marginBottom: '15px' }}>Gestión de Comprobante de Pago</h3>
+              
+              {editingInvoice.payment_proof && (
+                <div style={{
+                  backgroundColor: '#e8f5e8',
+                  padding: '15px',
+                  borderRadius: '5px',
+                  marginBottom: '20px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '16px' }}>📎</span>
+                    <strong>Comprobante actual:</strong>
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px' }}>
+                    Archivo: {editingInvoice.payment_proof}
+                  </div>
+                  <button
+                    onClick={() => window.open(`http://localhost:3001/api/invoices/payment-file/${editingInvoice.payment_proof}`, '_blank')}
+                    style={{
+                      backgroundColor: '#2196F3',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 16px',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    Ver Comprobante Actual
+                  </button>
+                </div>
+              )}
+
+              {!editingInvoice.payment_proof && (
+                <div style={{
+                  backgroundColor: '#fff3cd',
+                  padding: '15px',
+                  borderRadius: '5px',
+                  marginBottom: '20px',
+                  color: '#856404'
+                }}>
+                  No hay comprobante de pago cargado para esta factura.
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
+                  {editingInvoice.payment_proof ? 'Reemplazar Comprobante:' : 'Cargar Comprobante:'}
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setPaymentFile(e.target.files[0])}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #ddd',
+                    borderRadius: '5px'
+                  }}
+                />
+                <small style={{ color: '#666', fontSize: '12px' }}>
+                  Formatos aceptados: PDF, JPG, PNG
+                </small>
+                
+                {paymentFile && (
+                  <div style={{
+                    marginTop: '10px',
+                    padding: '10px',
+                    backgroundColor: '#e8f5e8',
+                    borderRadius: '5px',
+                    fontSize: '14px'
+                  }}>
+                    📎 Nuevo archivo seleccionado: {paymentFile.name}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {paymentFile && (
+                <button
+                  onClick={async () => {
+                    try {
+                      setLoading(true)
+                      
+                      const formDataUpload = new FormData()
+                      formDataUpload.append('payment_file', paymentFile)
+                      
+                      const response = await fetch(`http://localhost:3001/api/invoices/${editingInvoice.id}/payment-file`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${token}`
+                        },
+                        body: formDataUpload
+                      })
+                      
+                      const data = await response.json()
+                      
+                      if (data.success) {
+                        await loadInvoices()
+                        setShowForm(false)
+                        setPaymentFile(null)
+                        resetForm()
+                      } else {
+                        setError(data.message || 'Error al cargar comprobante')
+                      }
+                    } catch (error) {
+                      setError(`Error de conexión: ${error.message}`)
+                    } finally {
+                      setLoading(false)
+                    }
+                  }}
+                  disabled={loading}
+                  style={{
+                    backgroundColor: loading ? '#999' : '#4CAF50',
+                    color: 'white',
+                    border: 'none',
+                    padding: '12px 24px',
+                    borderRadius: '5px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontSize: '16px'
+                  }}
+                >
+                  {loading ? 'Cargando...' : (editingInvoice.payment_file ? 'Actualizar Comprobante' : 'Cargar Comprobante')}
+                </button>
+              )}
+              
+              <button
+                onClick={() => {
+                  setShowForm(false)
+                  setPaymentFile(null)
+                  resetForm()
+                }}
+                style={{
+                  backgroundColor: '#666',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 24px',
+                  borderRadius: '5px',
+                  cursor: 'pointer'
+                }}
+              >
+                Volver
+              </button>
+            </div>
+          </div>
+        ) : (
+        
+        // Formulario normal para facturas no pagadas o nuevas
         <form onSubmit={handleSubmit} style={{
           backgroundColor: 'white',
           padding: '30px',
@@ -412,7 +788,6 @@ export default function Invoices({ onBack }) {
         }}>
           
           <style>{`
-            /* Ocultar flechitas de inputs numéricos */
             input[type="number"]::-webkit-outer-spin-button,
             input[type="number"]::-webkit-inner-spin-button {
               -webkit-appearance: none;
@@ -427,6 +802,7 @@ export default function Invoices({ onBack }) {
               -webkit-appearance: textfield;
             }
           `}</style>
+
           {/* Proveedor y tipo de factura */}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginBottom: '20px' }}>
             <div>
@@ -552,7 +928,7 @@ export default function Invoices({ onBack }) {
             </div>
           )}
 
-          {/* Fechas */}
+          {/* Fechas - CON VALIDACIÓN */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
@@ -561,7 +937,10 @@ export default function Invoices({ onBack }) {
               <input
                 type="date"
                 value={formData.invoice_date}
-                onChange={(e) => setFormData({...formData, invoice_date: e.target.value})}
+                onChange={(e) => {
+                  setFormData({...formData, invoice_date: e.target.value})
+                  setError('') // Limpiar error al cambiar fecha
+                }}
                 style={{
                   width: '100%',
                   padding: '10px',
@@ -579,7 +958,10 @@ export default function Invoices({ onBack }) {
               <input
                 type="date"
                 value={formData.due_date}
-                onChange={(e) => setFormData({...formData, due_date: e.target.value})}
+                onChange={(e) => {
+                  setFormData({...formData, due_date: e.target.value})
+                  setError('') // Limpiar error al cambiar fecha
+                }}
                 style={{
                   width: '100%',
                   padding: '10px',
@@ -587,6 +969,11 @@ export default function Invoices({ onBack }) {
                   borderRadius: '5px'
                 }}
               />
+              {formData.invoice_date && formData.due_date && new Date(formData.due_date) < new Date(formData.invoice_date) && (
+                <small style={{ color: '#f44336', fontSize: '12px' }}>
+                  ⚠️ El vencimiento no puede ser anterior a la emisión
+                </small>
+              )}
             </div>
 
             <div>
@@ -631,34 +1018,9 @@ export default function Invoices({ onBack }) {
             </div>
           </div>
 
-          {/* Importes fiscales */}
+          {/* NUEVA SECCIÓN FISCAL - Cada impuesto con su propio subtotal */}
           <h3 style={{ color: '#333', marginBottom: '15px' }}>Importes Fiscales</h3>
           
-          {/* Subtotal principal */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-              Subtotal (Neto) *
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={formData.subtotal}
-              onChange={handleSubtotalChange}
-              placeholder="0.00"
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #4CAF50',
-                borderRadius: '5px',
-                fontSize: '16px',
-                fontWeight: 'bold'
-              }}
-            />
-            <small style={{ color: '#666', fontSize: '12px' }}>
-              Este es el importe base para calcular los impuestos
-            </small>
-          </div>
-
           {/* Selector de impuestos */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
@@ -672,14 +1034,13 @@ export default function Invoices({ onBack }) {
                   key={taxType.id}
                   type="button"
                   onClick={() => addTaxDetail(taxType)}
-                  disabled={!formData.subtotal}
                   style={{
-                    backgroundColor: formData.subtotal ? '#2196F3' : '#ccc',
+                    backgroundColor: '#2196F3',
                     color: 'white',
                     border: 'none',
                     padding: '8px 12px',
                     borderRadius: '5px',
-                    cursor: formData.subtotal ? 'pointer' : 'not-allowed',
+                    cursor: 'pointer',
                     fontSize: '12px'
                   }}
                 >
@@ -687,60 +1048,85 @@ export default function Invoices({ onBack }) {
                 </button>
               ))}
             </div>
-            {!formData.subtotal && (
-              <small style={{ color: '#f44336', fontSize: '12px' }}>
-                Primero ingrese el subtotal para poder agregar impuestos
-              </small>
-            )}
           </div>
 
-          {/* Lista de impuestos agregados */}
+          {/* Lista de impuestos con subtotales individuales */}
           {formData.tax_details.length > 0 && (
             <div style={{ marginBottom: '20px' }}>
               <h4 style={{ color: '#333', marginBottom: '10px' }}>Impuestos Aplicados:</h4>
-              <div style={{ display: 'grid', gap: '10px' }}>
+              <div style={{ display: 'grid', gap: '15px' }}>
                 {formData.tax_details.map(tax => (
                   <div key={tax.id} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '10px',
+                    padding: '15px',
                     backgroundColor: '#f8f9fa',
-                    borderRadius: '5px',
+                    borderRadius: '8px',
                     border: '1px solid #e9ecef'
                   }}>
-                    <span style={{ minWidth: '120px', fontSize: '14px' }}>{tax.label}:</span>
-                    <span style={{ fontSize: '12px', color: '#666' }}>
-                      (${formData.subtotal} × {(tax.rate * 100).toFixed(2)}%)
-                    </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={tax.amount}
-                      onChange={(e) => updateTaxAmount(tax.id, e.target.value)}
-                      style={{
-                        width: '100px',
-                        padding: '5px',
-                        border: '1px solid #ddd',
-                        borderRadius: '3px',
-                        textAlign: 'right'
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeTaxDetail(tax.id)}
-                      style={{
-                        backgroundColor: '#f44336',
-                        color: 'white',
-                        border: 'none',
-                        padding: '5px 8px',
-                        borderRadius: '3px',
-                        cursor: 'pointer',
-                        fontSize: '12px'
-                      }}
-                    >
-                      ×
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <span style={{ fontWeight: 'bold', color: '#333' }}>{tax.label}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeTaxDetail(tax.id)}
+                        style={{
+                          backgroundColor: '#f44336',
+                          color: 'white',
+                          border: 'none',
+                          padding: '5px 8px',
+                          borderRadius: '3px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'end' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px', color: '#666' }}>
+                          Subtotal para este impuesto:
+                        </label>
+                        <input
+                          t  type="number"
+                            step="0.01"
+                            value={tax.subtotal}
+                            onChange={(e) => updateTaxSubtotal(tax.id, e.target.value)}
+                            onWheel={(e) => e.preventDefault()}
+                            placeholder="0.00"
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              border: '1px solid #ddd',
+                              borderRadius: '4px'
+                            }}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px', color: '#666' }}>
+                          Impuesto calculado ({(tax.rate * 100).toFixed(2)}%):
+                        </label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            value={tax.amount}
+                            onChange={(e) => updateTaxAmount(tax.id, e.target.value)}
+                            onWheel={(e) => e.preventDefault()}
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              border: '1px solid #ddd',
+                              borderRadius: '4px',
+                              backgroundColor: tax.subtotal ? '#f0f8ff' : 'white'
+                          }}
+                        />
+                        {tax.subtotal && (
+                          <small style={{ color: '#666', fontSize: '11px' }}>
+                            Auto: ${(parseFloat(tax.subtotal) * tax.rate).toFixed(2)}
+                          </small>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -757,22 +1143,47 @@ export default function Invoices({ onBack }) {
               step="0.01"
               value={formData.no_gravado}
               onChange={(e) => setFormData({...formData, no_gravado: e.target.value})}
+              onWheel={(e) => e.preventDefault()}
               placeholder="0.00"
               style={{
                 width: '100%',
-                padding: '10px',
+                padding: '12px',
                 border: '1px solid #ddd',
                 borderRadius: '5px'
               }}
             />
             <small style={{ color: '#666', fontSize: '12px' }}>
-              Importes que no están sujetos a impuestos (independiente del subtotal)
+              Importes que no están sujetos a impuestos
             </small>
+            
+            {/* Alerta para facturas B y C */}
+            {selectedSupplier && 
+             (selectedSupplier.category === 'monotributista' || selectedSupplier.category === 'iva_exento') && 
+             (formData.invoice_type === 'B' || formData.invoice_type === 'C') && (
+              <div style={{
+                backgroundColor: '#fff3cd',
+                border: '1px solid #ffeaa7',
+                color: '#856404',
+                padding: '10px',
+                borderRadius: '5px',
+                marginTop: '10px',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '16px' }}>💡</span>
+                <div>
+                  <strong>Sugerencia:</strong> Las facturas tipo {formData.invoice_type} de {selectedSupplier.category === 'monotributista' ? 'Monotributistas' : 'IVA Exentos'} 
+                  generalmente no incluyen IVA ni percepciones. El importe total suele cargarse completo en "No Gravado".
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Total calculado */}
           <div style={{
-            backgroundColor: '#f8f9fa',
+            backgroundColor: '#e8f5e8',
             padding: '15px',
             borderRadius: '5px',
             marginBottom: '20px',
@@ -895,6 +1306,7 @@ export default function Invoices({ onBack }) {
             </button>
           </div>
         </form>
+        )}
       </div>
     )
   }
@@ -1054,29 +1466,32 @@ export default function Invoices({ onBack }) {
                         </span>
                       </td>
                       <td style={{ padding: '15px', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                          {!invoice.is_paid && (
+                        <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          {/* Botón Editar - Para facturas no pagadas o admin */}
+                          {(!invoice.is_paid || user.role === 'admin') && (
                             <button
                               onClick={() => handleEdit(invoice)}
-                              disabled={user.role !== 'admin' && user.id !== invoice.created_by}
+                              disabled={!invoice.is_paid && user.role !== 'admin' && user.id !== invoice.created_by}
                               style={{
-                                backgroundColor: '#2196F3',
+                                backgroundColor: invoice.is_paid ? '#FF9800' : '#2196F3',
                                 color: 'white',
                                 border: 'none',
                                 padding: '5px 10px',
                                 borderRadius: '3px',
                                 cursor: 'pointer',
                                 fontSize: '12px',
-                                opacity: (user.role !== 'admin' && user.id !== invoice.created_by) ? 0.5 : 1
+                                opacity: (!invoice.is_paid && user.role !== 'admin' && user.id !== invoice.created_by) ? 0.5 : 1
                               }}
+                              title={invoice.is_paid ? 'Editar factura pagada (Solo Admin)' : 'Editar factura'}
                             >
-                              Editar
+                              {invoice.is_paid ? '⚠️ Editar' : 'Editar'}
                             </button>
                           )}
                           
+                          {/* Botón Marcar Pagada - Solo para admin en facturas pendientes */}
                           {user.role === 'admin' && !invoice.is_paid && (
                             <button
-                              onClick={() => handleMarkAsPaid(invoice.id)}
+                              onClick={() => handleMarkAsPaid(invoice)}
                               style={{
                                 backgroundColor: '#4CAF50',
                                 color: 'white',
@@ -1091,14 +1506,35 @@ export default function Invoices({ onBack }) {
                             </button>
                           )}
                           
+                          {/* Información y acciones para facturas pagadas */}
                           {invoice.is_paid && (
-                            <span style={{ 
-                              color: '#666', 
-                              fontSize: '12px',
-                              padding: '5px 10px'
-                            }}>
-                              Pagada el {invoice.paid_date ? new Date(invoice.paid_date).toLocaleDateString('es-ES') : 'N/A'}
-                            </span>
+                            <>
+                              <div style={{ 
+                                color: '#666', 
+                                fontSize: '11px',
+                                padding: '5px',
+                                textAlign: 'center'
+                              }}>
+                                Pagada el {invoice.paid_date ? new Date(invoice.paid_date).toLocaleDateString('es-ES') : 'N/A'}
+                              </div>
+                              
+                              {/* Botón Descargar Resumen */}
+                              <button
+                                onClick={() => handleDownloadInvoiceReport(invoice)}
+                                style={{
+                                  backgroundColor: '#9C27B0',
+                                  color: 'white',
+                                  border: 'none',
+                                  padding: '5px 10px',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                                title="Descargar resumen con comprobante"
+                              >
+                                📄 Descargar
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -1108,6 +1544,115 @@ export default function Invoices({ onBack }) {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal para comprobante de pago */}
+      {showPaymentModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '10px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            width: '500px',
+            maxWidth: '90vw'
+          }}>
+            <h3 style={{ color: '#333', marginBottom: '20px' }}>
+              Marcar Factura como Pagada
+            </h3>
+            
+            {selectedInvoiceForPayment && (
+              <div style={{ 
+                backgroundColor: '#f8f9fa',
+                padding: '15px',
+                borderRadius: '5px',
+                marginBottom: '20px'
+              }}>
+                <p><strong>Factura:</strong> {selectedInvoiceForPayment.invoice_number}</p>
+                <p><strong>Proveedor:</strong> {selectedInvoiceForPayment.supplier.business_name}</p>
+                <p><strong>Total:</strong> ${parseFloat(selectedInvoiceForPayment.total_amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</p>
+              </div>
+            )}
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold' }}>
+                Comprobante de Pago (Opcional)
+              </label>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => setPaymentFile(e.target.files[0])}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '5px'
+                }}
+              />
+              <small style={{ color: '#666', fontSize: '12px' }}>
+                Formatos aceptados: PDF, JPG, PNG
+              </small>
+              
+              {paymentFile && (
+                <div style={{
+                  marginTop: '10px',
+                  padding: '10px',
+                  backgroundColor: '#e8f5e8',
+                  borderRadius: '5px',
+                  fontSize: '14px'
+                }}>
+                  📎 Archivo seleccionado: {paymentFile.name}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowPaymentModal(false)
+                  setSelectedInvoiceForPayment(null)
+                  setPaymentFile(null)
+                }}
+                style={{
+                  backgroundColor: '#666',
+                  color: 'white',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '5px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              
+              <button
+                onClick={confirmPayment}
+                disabled={loading}
+                style={{
+                  backgroundColor: loading ? '#999' : '#4CAF50',
+                  color: 'white',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '5px',
+                  cursor: loading ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {loading ? 'Procesando...' : 'Confirmar Pago'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
