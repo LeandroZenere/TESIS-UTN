@@ -132,6 +132,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const invoice = await Invoice.findByPk(req.params.id, {
+      
       include: [
         {
           model: Supplier,
@@ -150,7 +151,7 @@ router.get('/:id', async (req, res) => {
         }
       ]
     });
-    
+
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -433,8 +434,40 @@ router.post('/:id/payment-file', requireAdmin, upload.single('payment_file'), as
       });
     }
 
-    // GET /api/invoices/:id/report - Generar reporte con comprobante embebido
+    // Eliminar archivo anterior si existe
+    if (invoice.payment_proof) {
+      const oldFilePath = path.join(__dirname, '../../uploads/payments', invoice.payment_proof);
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlinkSync(oldFilePath);
+      }
+    }
+
+    // Actualizar con nuevo archivo
+    await invoice.update({
+      payment_proof: req.file.filename
+    });
+
+    res.json({
+      success: true,
+      message: 'Comprobante subido exitosamente',
+      data: { 
+        invoice,
+        filename: req.file.filename
+      }
+    });
+
+  } catch (error) {
+    console.error('Error subiendo comprobante:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// GET /api/invoices/:id/report - Generar reporte con comprobante embebido
 router.get('/:id/report', async (req, res) => {
+
   try {
     const invoice = await Invoice.findByPk(req.params.id, {
       include: [
@@ -464,6 +497,7 @@ router.get('/:id/report', async (req, res) => {
       });
     }
 
+
     // Solo permitir acceso al creador, admin, o si es una factura pagada
     if (req.user.role !== 'admin' && req.user.id !== invoice.created_by && !invoice.is_paid) {
       return res.status(403).json({
@@ -479,7 +513,8 @@ router.get('/:id/report', async (req, res) => {
     if (invoice.payment_proof) {
       try {
         const paymentFilePath = path.join(__dirname, '../../uploads/payments', invoice.payment_proof);
-        console.log('DEBUG: Buscando comprobante en:', paymentFilePath);
+        console.log('DEBUG REPORTE: Buscando comprobante en:', paymentFilePath);
+        console.log('DEBUG REPORTE: Archivo existe?', fs.existsSync(paymentFilePath));
         
         if (fs.existsSync(paymentFilePath)) {
           const fileBuffer = fs.readFileSync(paymentFilePath);
@@ -504,8 +539,8 @@ router.get('/:id/report', async (req, res) => {
       }
     }
 
-    // Generar HTML del reporte con comprobante embebido
-    const htmlContent = `
+// Generar HTML del reporte con comprobante embebido
+const htmlContent = `
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -632,14 +667,43 @@ router.get('/:id/report', async (req, res) => {
             margin-top: 10px;
         }
 
+        /* Botón para generar PDF */
+        .pdf-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 1000;
+            font-size: 14px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .pdf-button:hover {
+            background: #0056b3;
+        }
+
         @media print {
             body { background-color: white; }
             .report-container { box-shadow: none; }
             .payment-proof-container img { max-height: 300px; }
+            .pdf-button { display: none !important; }
+            .header {
+                background: #667eea !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- Botón para generar PDF -->
+    <button class="pdf-button" onclick="window.print()">🖨️ Generar PDF</button>
+    
     <div class="report-container">
         <div class="header">
             <h1>REPORTE DE FACTURA</h1>
@@ -789,47 +853,23 @@ router.get('/:id/report', async (req, res) => {
             </div>
         </div>
     </div>
+    
+    <script>
+        window.addEventListener('load', function() {
+            console.log('Reporte cargado correctamente. Use el botón "Generar PDF" para imprimir.');
+        });
+    </script>
 </body>
 </html>
-    `;
+`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Content-Disposition', `inline; filename="reporte_factura_${invoice.invoice_number.replace(/[\/\\:*?"<>|]/g, '_')}.html"`);
     res.send(htmlContent);
-
+console.log('DEBUG HTML LENGTH:', htmlContent.length);
+console.log('DEBUG HTML PREVIEW:', htmlContent.substring(0, 1000));
   } catch (error) {
     console.error('Error generando reporte:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor'
-    });
-  }
-});
-
-    // Eliminar archivo anterior si existe
-    if (invoice.payment_proof) {
-      const oldFilePath = path.join('uploads/payments', invoice.payment_proof);
-      if (fs.existsSync(oldFilePath)) {
-        fs.unlinkSync(oldFilePath);
-      }
-    }
-
-    // Actualizar con nuevo archivo
-    await invoice.update({
-      payment_proof: req.file.filename
-    });
-
-    res.json({
-      success: true,
-      message: 'Comprobante subido exitosamente',
-      data: { 
-        invoice,
-        filename: req.file.filename
-      }
-    });
-
-  } catch (error) {
-    console.error('Error subiendo comprobante:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'

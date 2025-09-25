@@ -330,102 +330,46 @@ export default function Invoices({ onBack }) {
   }
 
   const handleDownloadInvoiceReport = async (invoice) => {
-    try {
-      // Verificar múltiples posibles campos para el comprobante de pago
-      const paymentFile = invoice.payment_file_path || invoice.payment_file || invoice.payment_document || null
-      
-      // Crear un PDF temporal del lado del cliente con la información disponible
-      // mientras se implementa la ruta del backend
-      const invoiceData = {
-        numero: invoice.invoice_number,
-        proveedor: invoice.supplier.business_name,
-        cuit: invoice.supplier.cuit,
-        fecha_emision: new Date(invoice.invoice_date).toLocaleDateString('es-ES'),
-        fecha_vencimiento: invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('es-ES') : 'N/A',
-        fecha_pago: invoice.paid_date ? new Date(invoice.paid_date).toLocaleDateString('es-ES') : 'N/A',
-        total: parseFloat(invoice.total_amount).toLocaleString('es-ES', { minimumFractionDigits: 2 }),
-        categoria: invoice.expense_category,
-        subcategoria: invoice.expense_subcategory || 'N/A',
-        tipo_pago: invoice.payment_type,
-        notas: invoice.notes || 'Sin observaciones',
-        comprobante: paymentFile
+  try {
+    setLoading(true);
+    
+    // Usar la nueva ruta del backend que incluye el comprobante embebido
+    const response = await fetch(`http://localhost:3001/api/invoices/${invoice.id}/report`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
       }
+    });
 
-      // Crear contenido HTML para el reporte
-      const htmlContent = `
-        <html>
-          <head>
-            <title>Reporte de Factura ${invoiceData.numero}</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 20px; }
-              .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
-              .info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-              .info-table th, .info-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-              .info-table th { background-color: #f2f2f2; }
-              .status { color: #4CAF50; font-weight: bold; }
-              .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc; font-size: 12px; color: #666; }
-              .payment-section { margin-top: 20px; padding: 15px; border-radius: 5px; }
-              .with-payment { background-color: #e8f5e8; }
-              .without-payment { background-color: #fff3cd; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <h1>REPORTE DE FACTURA</h1>
-              <h2>${invoiceData.numero}</h2>
-            </div>
-            
-            <table class="info-table">
-              <tr><th>Proveedor</th><td>${invoiceData.proveedor}</td></tr>
-              <tr><th>CUIT</th><td>${invoiceData.cuit}</td></tr>
-              <tr><th>Fecha de Emisión</th><td>${invoiceData.fecha_emision}</td></tr>
-              <tr><th>Fecha de Vencimiento</th><td>${invoiceData.fecha_vencimiento}</td></tr>
-              <tr><th>Fecha de Pago</th><td>${invoiceData.fecha_pago}</td></tr>
-              <tr><th>Total</th><td>${invoiceData.total}</td></tr>
-              <tr><th>Categoría</th><td>${invoiceData.categoria}</td></tr>
-              <tr><th>Subcategoría</th><td>${invoiceData.subcategoria}</td></tr>
-              <tr><th>Tipo de Pago</th><td>${invoiceData.tipo_pago}</td></tr>
-              <tr><th>Estado</th><td><span class="status">PAGADA</span></td></tr>
-              <tr><th>Notas</th><td>${invoiceData.notas}</td></tr>
-            </table>
-            
-            <div class="payment-section ${invoiceData.comprobante ? 'with-payment' : 'without-payment'}">
-              ${invoiceData.comprobante ? 
-                `<h3>📎 Comprobante de Pago</h3>
-                 <p><strong>Archivo:</strong> ${invoiceData.comprobante}</p>
-                 <p><small>Para visualizar el comprobante, acceda al sistema de gestión de facturas y utilice la opción "Ver Comprobante Actual" en la sección de edición de la factura.</small></p>
-                 <p><small><strong>Ruta del archivo:</strong> http://localhost:3001/uploads/payments/${invoiceData.comprobante}</small></p>` : 
-                `<h3>⚠️ Comprobante de Pago</h3>
-                 <p><strong>Estado:</strong> No hay comprobante de pago adjunto a esta factura.</p>
-                 <p><small>El administrador puede cargar el comprobante posteriormente a través del sistema de gestión.</small></p>`
-              }
-            </div>
-            
-            <div class="footer">
-              <p>Reporte generado el ${new Date().toLocaleString('es-ES')}</p>
-              <p>Sistema de Gestión de Facturas - Versión 1.0</p>
-              <p><small>Este reporte incluye toda la información disponible al momento de la generación.</small></p>
-            </div>
-          </body>
-        </html>
-      `
-
-      // Crear y descargar el archivo HTML
-      const blob = new Blob([htmlContent], { type: 'text/html' })
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.style.display = 'none'
-      a.href = url
-      a.download = `reporte_factura_${invoice.invoice_number.replace(/[\/\\:*?"<>|]/g, '_')}.html`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-
-    } catch (error) {
-      setError(`Error al generar el reporte: ${error.message}`)
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Error al generar el reporte');
     }
+
+    // Obtener el contenido HTML del reporte
+    const htmlContent = await response.text();
+    
+    // Crear y descargar el archivo HTML
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `reporte_completo_${invoice.invoice_number.replace(/[\/\\:*?"<>|]/g, '_')}_${new Date().toISOString().split('T')[0]}.html`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    console.log('Reporte descargado exitosamente');
+    
+  } catch (error) {
+    console.error('Error al descargar reporte:', error);
+    setError(`Error al generar el reporte: ${error.message}`);
+  } finally {
+    setLoading(false);
   }
+};
 
   const handleEdit = (invoice) => {
     // Solo restringir edición para usuarios comunes en facturas pagadas
