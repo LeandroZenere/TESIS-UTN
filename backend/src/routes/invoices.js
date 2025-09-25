@@ -433,6 +433,379 @@ router.post('/:id/payment-file', requireAdmin, upload.single('payment_file'), as
       });
     }
 
+    // GET /api/invoices/:id/report - Generar reporte con comprobante embebido
+router.get('/:id/report', async (req, res) => {
+  try {
+    const invoice = await Invoice.findByPk(req.params.id, {
+      include: [
+        {
+          model: Supplier,
+          as: 'supplier',
+          attributes: ['id', 'business_name', 'cuit', 'category', 'fiscal_address', 'phone', 'email', 'province', 'city', 'postal_code']
+        },
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['id', 'username', 'full_name']
+        },
+        {
+          model: User,
+          as: 'paid_by_user',
+          attributes: ['id', 'username', 'full_name'],
+          required: false
+        }
+      ]
+    });
+    
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: 'Factura no encontrada'
+      });
+    }
+
+    // Solo permitir acceso al creador, admin, o si es una factura pagada
+    if (req.user.role !== 'admin' && req.user.id !== invoice.created_by && !invoice.is_paid) {
+      return res.status(403).json({
+        success: false,
+        message: 'Sin permisos para ver este reporte'
+      });
+    }
+
+    // Convertir comprobante a base64 si existe
+    let paymentProofBase64 = null;
+    let paymentProofType = null;
+    
+    if (invoice.payment_proof) {
+      try {
+        const paymentFilePath = path.join(__dirname, '../../uploads/payments', invoice.payment_proof);
+        console.log('DEBUG: Buscando comprobante en:', paymentFilePath);
+        
+        if (fs.existsSync(paymentFilePath)) {
+          const fileBuffer = fs.readFileSync(paymentFilePath);
+          paymentProofBase64 = fileBuffer.toString('base64');
+          
+          // Determinar tipo de archivo
+          const fileExt = path.extname(invoice.payment_proof).toLowerCase();
+          if (['.jpg', '.jpeg'].includes(fileExt)) {
+            paymentProofType = 'image/jpeg';
+          } else if (fileExt === '.png') {
+            paymentProofType = 'image/png';
+          } else if (fileExt === '.pdf') {
+            paymentProofType = 'application/pdf';
+          }
+          
+          console.log('DEBUG: Comprobante convertido a base64, tipo:', paymentProofType);
+        } else {
+          console.log('DEBUG: Archivo de comprobante no encontrado');
+        }
+      } catch (error) {
+        console.error('Error procesando comprobante:', error);
+      }
+    }
+
+    // Generar HTML del reporte con comprobante embebido
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte de Factura ${invoice.invoice_number}</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .report-container {
+            background-color: white;
+            max-width: 800px;
+            margin: 0 auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .header { 
+            text-align: center; 
+            border-bottom: 3px solid #333; 
+            padding: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .header h1 { margin: 0 0 10px 0; font-size: 28px; }
+        .header h2 { margin: 0; font-size: 24px; font-weight: normal; }
+        
+        .content { padding: 30px; }
+        
+        .info-section { 
+            margin-bottom: 30px;
+        }
+        .info-section h3 { 
+            color: #333; 
+            border-bottom: 2px solid #667eea; 
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .info-grid { 
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .info-item { 
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .info-item strong { 
+            display: block;
+            color: #495057;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        .info-item span {
+            font-size: 14px;
+            color: #212529;
+        }
+        
+        .status { 
+            color: #28a745; 
+            font-weight: bold; 
+            font-size: 16px;
+        }
+        
+        .payment-section { 
+            margin-top: 30px; 
+            padding: 20px; 
+            border-radius: 8px;
+            border: 2px solid #dee2e6;
+        }
+        .with-payment { 
+            background-color: #d4edda; 
+            border-color: #28a745;
+        }
+        .without-payment { 
+            background-color: #fff3cd; 
+            border-color: #ffc107;
+        }
+        
+        .payment-proof-container {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .payment-proof-container img {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .payment-proof-container embed {
+            width: 100%;
+            height: 500px;
+            border-radius: 8px;
+        }
+        
+        .footer { 
+            margin-top: 40px; 
+            padding-top: 20px; 
+            border-top: 1px solid #dee2e6; 
+            font-size: 12px; 
+            color: #6c757d;
+            text-align: center;
+        }
+        
+        .financial-details {
+            background-color: #e8f4fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .total-amount {
+            font-size: 18px;
+            font-weight: bold;
+            color: #0056b3;
+            text-align: center;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        @media print {
+            body { background-color: white; }
+            .report-container { box-shadow: none; }
+            .payment-proof-container img { max-height: 300px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <div class="header">
+            <h1>REPORTE DE FACTURA</h1>
+            <h2>${invoice.invoice_number}</h2>
+        </div>
+        
+        <div class="content">
+            <!-- Información del Proveedor -->
+            <div class="info-section">
+                <h3>📋 Información del Proveedor</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <strong>RAZÓN SOCIAL</strong>
+                        <span>${invoice.supplier.business_name}</span>
+                    </div>
+                    <div class="info-item">
+                        <strong>CUIT</strong>
+                        <span>${invoice.supplier.cuit}</span>
+                    </div>
+                    <div class="info-item">
+                        <strong>CATEGORÍA</strong>
+                        <span>${invoice.supplier.category}</span>
+                    </div>
+                    <div class="info-item">
+                        <strong>TELÉFONO</strong>
+                        <span>${invoice.supplier.phone || 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Información de la Factura -->
+            <div class="info-section">
+                <h3>🧾 Detalles de la Factura</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <strong>NÚMERO DE FACTURA</strong>
+                        <span>${invoice.invoice_number}</span>
+                    </div>
+                    <div class="info-item">
+                        <strong>FECHA DE EMISIÓN</strong>
+                        <span>${new Date(invoice.invoice_date).toLocaleDateString('es-ES')}</span>
+                    </div>
+                    <div class="info-item">
+                        <strong>FECHA DE VENCIMIENTO</strong>
+                        <span>${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('es-ES') : 'N/A'}</span>
+                    </div>
+                    <div class="info-item">
+                        <strong>TIPO DE PAGO</strong>
+                        <span>${invoice.payment_type}</span>
+                    </div>
+                    <div class="info-item">
+                        <strong>CATEGORÍA</strong>
+                        <span>${invoice.expense_category}</span>
+                    </div>
+                    <div class="info-item">
+                        <strong>SUBCATEGORÍA</strong>
+                        <span>${invoice.expense_subcategory || 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Detalles Financieros -->
+            <div class="financial-details">
+                <h3 style="margin-top: 0;">💰 Detalles Financieros</h3>
+                <div class="info-grid">
+                    ${invoice.subtotal > 0 ? `<div class="info-item">
+                        <strong>SUBTOTAL</strong>
+                        <span>$${parseFloat(invoice.subtotal).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
+                    </div>` : ''}
+                    ${invoice.iva_21 > 0 ? `<div class="info-item">
+                        <strong>IVA 21%</strong>
+                        <span>$${parseFloat(invoice.iva_21).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
+                    </div>` : ''}
+                    ${invoice.iva_27 > 0 ? `<div class="info-item">
+                        <strong>IVA 27%</strong>
+                        <span>$${parseFloat(invoice.iva_27).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
+                    </div>` : ''}
+                    ${invoice.iva_105 > 0 ? `<div class="info-item">
+                        <strong>IVA 10.5%</strong>
+                        <span>$${parseFloat(invoice.iva_105).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
+                    </div>` : ''}
+                    ${invoice.perc_iva > 0 ? `<div class="info-item">
+                        <strong>PERC. IVA</strong>
+                        <span>$${parseFloat(invoice.perc_iva).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
+                    </div>` : ''}
+                    ${invoice.perc_iibb > 0 ? `<div class="info-item">
+                        <strong>PERC. IIBB</strong>
+                        <span>$${parseFloat(invoice.perc_iibb).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
+                    </div>` : ''}
+                    ${invoice.otros_impuestos > 0 ? `<div class="info-item">
+                        <strong>OTROS/NO GRAVADO</strong>
+                        <span>$${parseFloat(invoice.otros_impuestos).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</span>
+                    </div>` : ''}
+                </div>
+                <div class="total-amount">
+                    TOTAL: $${parseFloat(invoice.total_amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                </div>
+            </div>
+            
+            <!-- Estado y Pago -->
+            <div class="info-section">
+                <h3>📊 Estado del Pago</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <strong>ESTADO</strong>
+                        <span class="status">${invoice.is_paid ? 'PAGADA' : 'PENDIENTE'}</span>
+                    </div>
+                    ${invoice.is_paid && invoice.paid_date ? `<div class="info-item">
+                        <strong>FECHA DE PAGO</strong>
+                        <span>${new Date(invoice.paid_date).toLocaleDateString('es-ES')}</span>
+                    </div>` : ''}
+                    ${invoice.paid_by_user ? `<div class="info-item">
+                        <strong>PAGADA POR</strong>
+                        <span>${invoice.paid_by_user.full_name} (${invoice.paid_by_user.username})</span>
+                    </div>` : ''}
+                </div>
+                
+                ${invoice.notes ? `<div class="info-item" style="grid-column: 1 / -1; margin-top: 15px;">
+                    <strong>OBSERVACIONES</strong>
+                    <span>${invoice.notes}</span>
+                </div>` : ''}
+            </div>
+            
+            <!-- Comprobante de Pago -->
+            <div class="payment-section ${paymentProofBase64 ? 'with-payment' : 'without-payment'}">
+                <h3>📎 Comprobante de Pago</h3>
+                ${paymentProofBase64 ? `
+                    <p><strong>Estado:</strong> ✅ Comprobante adjunto</p>
+                    <p><strong>Archivo:</strong> ${invoice.payment_proof}</p>
+                    <div class="payment-proof-container">
+                        ${paymentProofType === 'application/pdf' ? 
+                            `<embed src="data:${paymentProofType};base64,${paymentProofBase64}" type="application/pdf" />` :
+                            `<img src="data:${paymentProofType};base64,${paymentProofBase64}" alt="Comprobante de Pago" />`
+                        }
+                    </div>
+                ` : `
+                    <p><strong>Estado:</strong> ⚠️ No hay comprobante de pago adjunto</p>
+                    <p><em>El comprobante puede ser cargado posteriormente por el administrador a través del sistema de gestión.</em></p>
+                `}
+            </div>
+            
+            <div class="footer">
+                <p><strong>Reporte generado el:</strong> ${new Date().toLocaleString('es-ES')}</p>
+                <p><strong>Sistema de Gestión de Facturas</strong> - Versión 1.0</p>
+                <p>Este reporte incluye toda la información disponible al momento de la generación.</p>
+                ${invoice.creator ? `<p><strong>Factura cargada por:</strong> ${invoice.creator.full_name} (${invoice.creator.username})</p>` : ''}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+    `;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `inline; filename="reporte_factura_${invoice.invoice_number.replace(/[\/\\:*?"<>|]/g, '_')}.html"`);
+    res.send(htmlContent);
+
+  } catch (error) {
+    console.error('Error generando reporte:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
     // Eliminar archivo anterior si existe
     if (invoice.payment_proof) {
       const oldFilePath = path.join('uploads/payments', invoice.payment_proof);
