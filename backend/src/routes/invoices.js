@@ -308,8 +308,10 @@ router.post('/', (req, res, next) => {
   }
 });
 
-// PUT /api/invoices/:id - Actualizar factura
-router.put('/:id', async (req, res) => {
+// PUT /api/invoices/:id - Actualizar factura (con factura original)
+router.put('/:id', upload.fields([
+  { name: 'original_invoice', maxCount: 1 }
+]), async (req, res) => {
   try {
     const invoice = await Invoice.findByPk(req.params.id);
     
@@ -333,6 +335,26 @@ router.put('/:id', async (req, res) => {
         success: false,
         message: 'No se puede editar una factura que ya está pagada'
       });
+    }
+
+    // Manejo del archivo original en edición
+    let originalInvoiceFile = invoice.original_invoice; // Mantener el existente por defecto
+    
+    if (req.files && req.files.original_invoice) {
+      // Si hay un nuevo archivo, eliminar el anterior si existe
+      if (invoice.original_invoice) {
+        const oldFilePath = path.join(__dirname, '../../uploads/originals', invoice.original_invoice);
+        if (fs.existsSync(oldFilePath)) {
+          fs.unlinkSync(oldFilePath);
+          console.log('DEBUG: Archivo original anterior eliminado:', invoice.original_invoice);
+        }
+      }
+      
+      // Usar el nuevo archivo
+      originalInvoiceFile = req.files.original_invoice[0].filename;
+      console.log('DEBUG: Nuevo archivo original guardado:', originalInvoiceFile);
+    } else {
+      console.log('DEBUG: Sin archivo original nuevo, manteniendo:', originalInvoiceFile);
     }
 
     const {
@@ -366,7 +388,8 @@ router.put('/:id', async (req, res) => {
       otros_impuestos: otros_impuestos !== undefined ? otros_impuestos : invoice.otros_impuestos,
       expense_category: expense_category || invoice.expense_category,
       expense_subcategory: expense_subcategory || invoice.expense_subcategory,
-      notes: notes !== undefined ? notes : invoice.notes
+      notes: notes !== undefined ? notes : invoice.notes,
+      original_invoice: originalInvoiceFile // Actualizar archivo original
     });
 
     // Recalcular total

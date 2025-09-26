@@ -469,6 +469,7 @@ const resetForm = () => {
   // Reconstruir tax_details desde los campos individuales del backend
   const reconstructedTaxDetails = []
   let nextId = Date.now()
+  
 
   if (invoice.iva_21 > 0) {
     reconstructedTaxDetails.push({
@@ -1339,16 +1340,34 @@ const resetForm = () => {
               Factura Original (PDF) - Opcional
             </label>
             <input
-              type="file"
-              accept=".pdf"
-              onChange={(e) => setOriginalInvoiceFile(e.target.files[0])}
-              style={{
-                width: '100%',
-                padding: '10px',
-                border: '1px solid #ddd',
-                borderRadius: '5px'
-              }}
-            />
+                type="file"
+                accept=".pdf"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    // Validar que sea PDF
+                    if (file.type !== 'application/pdf') {
+                      setError('Solo se permiten archivos PDF para la factura original');
+                      e.target.value = ''; // Limpiar el input
+                      return;
+                    }
+                    // Validar tamaño (10MB máximo)
+                    if (file.size > 10 * 1024 * 1024) {
+                      setError('El archivo no puede superar los 10MB');
+                      e.target.value = '';
+                      return;
+                    }
+                    setError(''); // Limpiar errores previos
+                    setOriginalInvoiceFile(file);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '5px'
+                }}
+              />
             <small style={{ color: '#666', fontSize: '12px' }}>
               Suba aquí el PDF escaneado de la factura original (solo PDF, máximo 10MB)
             </small>
@@ -1560,7 +1579,18 @@ const resetForm = () => {
                         }}>
                           {invoice.is_paid ? 'Pagada' : 'Pendiente'}
                         </span>
-                      </td>
+                        
+                        {/* Agregar fecha de pago debajo si está pagada */}
+                        {invoice.is_paid && invoice.paid_date && (
+                          <div style={{
+                            fontSize: '10px',
+                            color: '#666',
+                            marginTop: '4px'
+                          }}>
+                            {new Date(invoice.paid_date).toLocaleDateString('es-ES')}
+                          </div>
+                        )}
+                      </td>                    
                       <td style={{ padding: '15px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
                           {/* Botón Editar - Para facturas no pagadas o admin */}
@@ -1623,16 +1653,7 @@ const resetForm = () => {
                           
                           {/* Información y acciones para facturas pagadas */}
                           {invoice.is_paid && (
-                            <>
-                              <div style={{ 
-                                color: '#666', 
-                                fontSize: '10px',
-                                padding: '5px',
-                                textAlign: 'center'
-                              }}>
-                                Pagada el {invoice.paid_date ? new Date(invoice.paid_date).toLocaleDateString('es-ES') : 'N/A'}
-                              </div>
-                              
+                            <>                       
                               {/* Botón Descargar Resumen */}
                               <button
                                 onClick={() => handleDownloadInvoiceReport(invoice)}
