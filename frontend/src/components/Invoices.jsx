@@ -59,6 +59,7 @@ export default function Invoices({ onBack }) {
       loadSuppliers()
     }
 
+    
     // Prevenir cambios con rueda del mouse en inputs numéricos
     const handleWheelOnNumberInputs = (e) => {
       if (e.target.type === 'number') {
@@ -204,81 +205,158 @@ export default function Invoices({ onBack }) {
     return null
   }
 
+const resetForm = () => {
+  setFormData({
+    supplier_id: '',
+    invoice_type: 'A', // o el valor por defecto que uses
+    punto_venta: '',
+    numero_factura: '',
+    invoice_date: '',
+    due_date: '',
+    payment_type: 'contado',
+    tax_details: [], // ← MUY IMPORTANTE: Resetear tax_details
+    no_gravado: '',
+    expense_category: '',
+    expense_subcategory: '',
+    notes: ''
+  })
+  
+  // Limpiar estados adicionales
+  setEditingInvoice(null)
+  setError('')
+  setSelectedSupplier(null) // Si tienes este estado
+}
+
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
+  e.preventDefault()
+  setError('')
 
-    // Validar fechas
-    const dateError = validateDates()
-    if (dateError) {
-      setError(dateError)
-      return
-    }
-
-    // Validar facturas duplicadas
-    const duplicateError = validateDuplicateInvoice()
-    if (duplicateError) {
-      setError(duplicateError)
-      return
-    }
-
-    if (!formData.supplier_id || !formData.punto_venta || !formData.numero_factura || !formData.invoice_date || !formData.expense_category) {
-      setError('Complete los campos obligatorios: Proveedor, Punto de Venta, Número, Fecha de Emisión y Categoría')
-      return
-    }
-
-    // Validar que al menos haya un impuesto con subtotal o no_gravado
-    const hasTaxes = formData.tax_details.some(tax => parseFloat(tax.subtotal) > 0)
-    const hasNoGravado = parseFloat(formData.no_gravado) > 0
-    
-    if (!hasTaxes && !hasNoGravado) {
-      setError('Debe ingresar al menos un subtotal para impuestos o un monto en "No Gravado"')
-      return
-    }
-
-    try {
-      setLoading(true)
-      
-      // Combinar punto de venta y número para el número de factura completo
-      const fullInvoiceNumber = `${formData.invoice_type}-${formData.punto_venta.padStart(4, '0')}-${formData.numero_factura.padStart(8, '0')}`
-      
-      const dataToSend = {
-        ...formData,
-        invoice_number: fullInvoiceNumber,
-        otros_impuestos: formData.no_gravado
-      }
-      
-      const url = editingInvoice 
-        ? `http://localhost:3001/api/invoices/${editingInvoice.id}`
-        : 'http://localhost:3001/api/invoices'
-      
-      const method = editingInvoice ? 'PUT' : 'POST'
-      
-      const response = await fetch(url, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(dataToSend)
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        await loadInvoices()
-        resetForm()
-        setShowForm(false)
-      } else {
-        setError(data.message || 'Error al cargar factura')
-      }
-    } catch (error) {
-      setError(`Error de conexión: ${error.message}`)
-      console.error('Error:', error)
-    } finally {
-      setLoading(false)
-    }
+  // Validar fechas
+  const dateError = validateDates()
+  if (dateError) {
+    setError(dateError)
+    return
   }
+
+  // Validar facturas duplicadas
+  const duplicateError = validateDuplicateInvoice()
+  if (duplicateError) {
+    setError(duplicateError)
+    return
+  }
+
+  if (!formData.supplier_id || !formData.punto_venta || !formData.numero_factura || !formData.invoice_date || !formData.expense_category) {
+    setError('Complete los campos obligatorios: Proveedor, Punto de Venta, Número, Fecha de Emisión y Categoría')
+    return
+  }
+
+  // Validar que al menos haya un impuesto con subtotal o no_gravado
+  const hasTaxes = formData.tax_details.some(tax => parseFloat(tax.subtotal) > 0)
+  const hasNoGravado = parseFloat(formData.no_gravado) > 0
+  
+  if (!hasTaxes && !hasNoGravado) {
+    setError('Debe ingresar al menos un subtotal para impuestos o un monto en "No Gravado"')
+    return
+  }
+
+  try {
+    setLoading(true)
+    
+    // Combinar punto de venta y número para el número de factura completo
+    const fullInvoiceNumber = `${formData.invoice_type}-${formData.punto_venta.padStart(4, '0')}-${formData.numero_factura.padStart(8, '0')}`
+    
+    // Convertir tax_details a campos individuales para el backend
+    const taxMapping = {
+      'iva_21': 0,
+      'iva_27': 0,
+      'iva_105': 0,
+      'perc_iva': 0,
+      'perc_iibb': 0
+    }
+
+    // Mapear los tax_details a los campos que espera el backend
+    formData.tax_details.forEach(tax => {
+      const amount = parseFloat(tax.amount) || 0
+      if (tax.type === 'iva_21') taxMapping.iva_21 = amount
+      if (tax.type === 'iva_27') taxMapping.iva_27 = amount
+      if (tax.type === 'iva_105') taxMapping.iva_105 = amount
+      if (tax.type === 'perc_iva') taxMapping.perc_iva = amount
+      if (tax.type === 'perc_iibb') taxMapping.perc_iibb = amount
+    })
+
+    // Calcular subtotal total (suma de todos los subtotales de impuestos)
+    const subtotalTotal = formData.tax_details.reduce((sum, tax) => {
+      return sum + (parseFloat(tax.subtotal) || 0)
+    }, 0)
+
+    // Calcular el total completo de la factura
+    const totalAmount = subtotalTotal + 
+                       taxMapping.iva_21 + 
+                       taxMapping.iva_27 + 
+                       taxMapping.iva_105 + 
+                       taxMapping.perc_iva + 
+                       taxMapping.perc_iibb + 
+                       (parseFloat(formData.no_gravado) || 0)
+
+    const dataToSend = {
+      supplier_id: formData.supplier_id,
+      invoice_number: fullInvoiceNumber,
+      invoice_date: formData.invoice_date,
+      due_date: formData.due_date,
+      payment_type: formData.payment_type,
+      subtotal: subtotalTotal,
+      iva_21: taxMapping.iva_21,
+      iva_27: taxMapping.iva_27,
+      iva_105: taxMapping.iva_105,
+      perc_iva: taxMapping.perc_iva,
+      perc_iibb: taxMapping.perc_iibb,
+      otros_impuestos: parseFloat(formData.no_gravado) || 0,
+      total: totalAmount, // Agregar el campo total calculado
+      expense_category: formData.expense_category,
+      expense_subcategory: formData.expense_subcategory,
+      notes: formData.notes || '' // Asegurar que notes nunca sea undefined
+    }
+    
+    // Log para debugging (puedes remover en producción)
+    console.log('Tax details originales:', formData.tax_details)
+    console.log('Tax mapping resultante:', taxMapping)
+    console.log('Datos a enviar:', dataToSend)
+    
+    const url = editingInvoice 
+      ? `http://localhost:3001/api/invoices/${editingInvoice.id}`
+      : 'http://localhost:3001/api/invoices'
+    
+    const method = editingInvoice ? 'PUT' : 'POST'
+    
+    const response = await fetch(url, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(dataToSend)
+    })
+
+    const data = await response.json()
+
+    if (data.success) {
+      await loadInvoices()
+      resetForm()
+      setShowForm(false)
+      
+      // Mensaje de éxito más específico
+      const action = editingInvoice ? 'actualizada' : 'creada'
+      console.log(`Factura ${action} exitosamente:`, data)
+    } else {
+      setError(data.message || 'Error al cargar factura')
+    }
+  } catch (error) {
+    setError(`Error de conexión: ${error.message}`)
+    console.error('Error:', error)
+  } finally {
+    setLoading(false)
+  }
+}
 
   const handleMarkAsPaid = async (invoice) => {
     if (!user || user.role !== 'admin') {
@@ -372,66 +450,103 @@ export default function Invoices({ onBack }) {
 };
 
   const handleEdit = (invoice) => {
-    // Solo restringir edición para usuarios comunes en facturas pagadas
-    if (invoice.is_paid && user.role !== 'admin') {
-      setError('No se puede editar una factura que ya está pagada')
-      return
-    }
-
-    // Separar el número de factura en sus componentes
-    const invoiceParts = invoice.invoice_number.split('-')
-    const puntoVenta = invoiceParts[1] || ''
-    const numeroFactura = invoiceParts[2] || ''
-
-    setEditingInvoice(invoice)
-    setFormData({
-      supplier_id: invoice.supplier_id,
-      invoice_type: invoiceParts[0] || '',
-      punto_venta: puntoVenta.replace(/^0+/, '') || puntoVenta,
-      numero_factura: numeroFactura.replace(/^0+/, '') || numeroFactura,
-      invoice_date: invoice.invoice_date,
-      due_date: invoice.due_date || '',
-      load_date: invoice.load_date || new Date().toISOString().split('T')[0],
-      payment_type: invoice.payment_type,
-      tax_details: [], // Se podría cargar desde el backend si está disponible
-      no_gravado: invoice.otros_impuestos,
-      expense_category: invoice.expense_category,
-      expense_subcategory: invoice.expense_subcategory || '',
-      notes: invoice.notes || ''
-    })
-    
-    const supplier = suppliers.find(s => s.id === invoice.supplier_id)
-    setSelectedSupplier(supplier)
-    
-    // Cargar subcategorías
-    if (invoice.expense_category && categories[invoice.expense_category]) {
-      setAvailableSubcategories(categories[invoice.expense_category])
-    }
-    
-    setShowForm(true)
+  // Solo restringir edición para usuarios comunes en facturas pagadas
+  if (invoice.is_paid && user.role !== 'admin') {
+    setError('No se puede editar una factura que ya está pagada')
+    return
   }
 
-  const resetForm = () => {
-    setFormData({
-      supplier_id: '',
-      invoice_type: '',
-      punto_venta: '',
-      numero_factura: '',
-      invoice_date: '',
-      due_date: '',
-      load_date: new Date().toISOString().split('T')[0],
-      payment_type: 'cuenta_corriente',
-      tax_details: [],
-      no_gravado: '',
-      expense_category: '',
-      expense_subcategory: '',
-      notes: ''
+  // Separar el número de factura en sus componentes
+  const invoiceParts = invoice.invoice_number.split('-')
+  const puntoVenta = invoiceParts[1] || ''
+  const numeroFactura = invoiceParts[2] || ''
+
+  // Reconstruir tax_details desde los campos individuales del backend
+  const reconstructedTaxDetails = []
+  let nextId = Date.now()
+
+  if (invoice.iva_21 > 0) {
+    reconstructedTaxDetails.push({
+      id: nextId++,
+      type: 'iva_21',
+      label: 'IVA 21%',
+      rate: 0.21,
+      subtotal: (invoice.iva_21 / 0.21).toFixed(2),
+      amount: invoice.iva_21.toString()
     })
-    setEditingInvoice(null)
-    setSelectedSupplier(null)
-    setAvailableSubcategories([])
-    setError('')
   }
+
+  if (invoice.iva_27 > 0) {
+    reconstructedTaxDetails.push({
+      id: nextId++,
+      type: 'iva_27',
+      label: 'IVA 27%',
+      rate: 0.27,
+      subtotal: (invoice.iva_27 / 0.27).toFixed(2),
+      amount: invoice.iva_27.toString()
+    })
+  }
+
+  if (invoice.iva_105 > 0) {
+    reconstructedTaxDetails.push({
+      id: nextId++,
+      type: 'iva_105',
+      label: 'IVA 10,5%',
+      rate: 0.105,
+      subtotal: (invoice.iva_105 / 0.105).toFixed(2),
+      amount: invoice.iva_105.toString()
+    })
+  }
+
+  if (invoice.perc_iva > 0) {
+    reconstructedTaxDetails.push({
+      id: nextId++,
+      type: 'perc_iva',
+      label: 'Percepción IVA 3%',
+      rate: 0.03,
+      subtotal: (invoice.perc_iva / 0.03).toFixed(2),
+      amount: invoice.perc_iva.toString()
+    })
+  }
+
+  if (invoice.perc_iibb > 0) {
+    reconstructedTaxDetails.push({
+      id: nextId++,
+      type: 'perc_iibb',
+      label: 'Percepción IIBB 1,75%',
+      rate: 0.0175,
+      subtotal: (invoice.perc_iibb / 0.0175).toFixed(2),
+      amount: invoice.perc_iibb.toString()
+    })
+  }
+
+  setEditingInvoice(invoice)
+  setFormData({
+    supplier_id: invoice.supplier_id,
+    invoice_type: invoiceParts[0] || '',
+    punto_venta: puntoVenta.replace(/^0+/, '') || puntoVenta,
+    numero_factura: numeroFactura.replace(/^0+/, '') || numeroFactura,
+    invoice_date: invoice.invoice_date,
+    due_date: invoice.due_date || '',
+    load_date: invoice.load_date || new Date().toISOString().split('T')[0],
+    payment_type: invoice.payment_type,
+    tax_details: reconstructedTaxDetails, // Usar los tax_details reconstruidos
+    no_gravado: invoice.otros_impuestos || '',
+    expense_category: invoice.expense_category,
+    expense_subcategory: invoice.expense_subcategory || '',
+    notes: invoice.notes || ''
+  })
+  
+  const supplier = suppliers.find(s => s.id === invoice.supplier_id)
+  setSelectedSupplier(supplier)
+  
+  // Cargar subcategorías
+  if (invoice.expense_category && categories[invoice.expense_category]) {
+    setAvailableSubcategories(categories[invoice.expense_category])
+  }
+  
+  setShowForm(true)
+}
 
   const handleSupplierChange = (e) => {
     const supplierId = e.target.value
