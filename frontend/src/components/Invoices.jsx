@@ -15,6 +15,8 @@ export default function Invoices({ onBack }) {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState(null)
   const [paymentFile, setPaymentFile] = useState(null)
+  const [originalInvoiceFile, setOriginalInvoiceFile] = useState(null)
+  
 
   // Categorías con subcategorías
   const categories = {
@@ -224,7 +226,8 @@ const resetForm = () => {
   // Limpiar estados adicionales
   setEditingInvoice(null)
   setError('')
-  setSelectedSupplier(null) // Si tienes este estado
+  setSelectedSupplier(null)
+  setOriginalInvoiceFile(null) // Si tienes este estado
 }
 
   const handleSubmit = async (e) => {
@@ -298,29 +301,34 @@ const resetForm = () => {
                        taxMapping.perc_iibb + 
                        (parseFloat(formData.no_gravado) || 0)
 
-    const dataToSend = {
-      supplier_id: formData.supplier_id,
-      invoice_number: fullInvoiceNumber,
-      invoice_date: formData.invoice_date,
-      due_date: formData.due_date,
-      payment_type: formData.payment_type,
-      subtotal: subtotalTotal,
-      iva_21: taxMapping.iva_21,
-      iva_27: taxMapping.iva_27,
-      iva_105: taxMapping.iva_105,
-      perc_iva: taxMapping.perc_iva,
-      perc_iibb: taxMapping.perc_iibb,
-      otros_impuestos: parseFloat(formData.no_gravado) || 0,
-      total: totalAmount, // Agregar el campo total calculado
-      expense_category: formData.expense_category,
-      expense_subcategory: formData.expense_subcategory,
-      notes: formData.notes || '' // Asegurar que notes nunca sea undefined
+    // CAMBIO PRINCIPAL: Crear FormData en lugar de objeto JSON
+    const formDataToSend = new FormData()
+    
+    // Agregar todos los campos de datos como strings
+    formDataToSend.append('supplier_id', formData.supplier_id)
+    formDataToSend.append('invoice_number', fullInvoiceNumber)
+    formDataToSend.append('invoice_date', formData.invoice_date)
+    formDataToSend.append('due_date', formData.due_date || '')
+    formDataToSend.append('payment_type', formData.payment_type)
+    formDataToSend.append('subtotal', subtotalTotal)
+    formDataToSend.append('iva_21', taxMapping.iva_21)
+    formDataToSend.append('iva_27', taxMapping.iva_27)
+    formDataToSend.append('iva_105', taxMapping.iva_105)
+    formDataToSend.append('perc_iva', taxMapping.perc_iva)
+    formDataToSend.append('perc_iibb', taxMapping.perc_iibb)
+    formDataToSend.append('otros_impuestos', parseFloat(formData.no_gravado) || 0)
+    formDataToSend.append('expense_category', formData.expense_category)
+    formDataToSend.append('expense_subcategory', formData.expense_subcategory || '')
+    formDataToSend.append('notes', formData.notes || '')
+    
+    // Agregar archivo original si existe
+    if (originalInvoiceFile) {
+      formDataToSend.append('original_invoice', originalInvoiceFile)
+      console.log('Archivo original agregado:', originalInvoiceFile.name)
     }
     
-    // Log para debugging (puedes remover en producción)
-    console.log('Tax details originales:', formData.tax_details)
-    console.log('Tax mapping resultante:', taxMapping)
-    console.log('Datos a enviar:', dataToSend)
+      for (let [key, value] of formDataToSend.entries()) {
+        console.log(`${key}:`, value); }
     
     const url = editingInvoice 
       ? `http://localhost:3001/api/invoices/${editingInvoice.id}`
@@ -331,10 +339,10 @@ const resetForm = () => {
     const response = await fetch(url, {
       method: method,
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
+        // NO incluir Content-Type para FormData - el navegador lo establece automáticamente
       },
-      body: JSON.stringify(dataToSend)
+      body: formDataToSend // Enviar FormData en lugar de JSON
     })
 
     const data = await response.json()
@@ -354,10 +362,9 @@ const resetForm = () => {
     setError(`Error de conexión: ${error.message}`)
     console.error('Error:', error)
   } finally {
-    setLoading(false)
+    setLoading(false)    
   }
 }
-
   const handleMarkAsPaid = async (invoice) => {
     if (!user || user.role !== 'admin') {
       setError('Solo los administradores pueden marcar facturas como pagadas')
@@ -1327,6 +1334,38 @@ const resetForm = () => {
             </div>
           </div>
 
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+              Factura Original (PDF) - Opcional
+            </label>
+            <input
+              type="file"
+              accept=".pdf"
+              onChange={(e) => setOriginalInvoiceFile(e.target.files[0])}
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #ddd',
+                borderRadius: '5px'
+              }}
+            />
+            <small style={{ color: '#666', fontSize: '12px' }}>
+              Suba aquí el PDF escaneado de la factura original (solo PDF, máximo 10MB)
+            </small>
+            
+            {originalInvoiceFile && (
+              <div style={{
+                marginTop: '10px',
+                padding: '10px',
+                backgroundColor: '#e8f5e8',
+                borderRadius: '5px',
+                fontSize: '14px'
+              }}>
+                📄 Archivo seleccionado: {originalInvoiceFile.name}
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
               type="submit"
@@ -1562,6 +1601,25 @@ const resetForm = () => {
                               Marcar Pagada
                             </button>
                           )}
+
+                              {/* Para ver factura original */}
+                              {invoice.original_invoice && (
+                                <button
+                                  onClick={() => window.open(`http://localhost:3001/api/invoices/original-file/${invoice.original_invoice}`, '_blank')}
+                                  style={{
+                                    backgroundColor: '#FF9800',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '5px 10px',
+                                    borderRadius: '3px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px'
+                                  }}
+                                  title="Ver factura original"
+                                >
+                                  📄 Original
+                                </button>
+                              )}
                           
                           {/* Información y acciones para facturas pagadas */}
                           {invoice.is_paid && (
@@ -1591,6 +1649,7 @@ const resetForm = () => {
                               >
                                 📄 Descargar PDF
                               </button>
+
                             </>
                           )}
                         </div>

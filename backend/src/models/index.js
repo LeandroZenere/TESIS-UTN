@@ -38,15 +38,10 @@ Invoice.belongsTo(User, {
 });
 
 // Función para sincronizar todos los modelos
-const syncAllModels = async (force = false) => {
+const syncAllModels = async () => {
   try {
-    await sequelize.sync({ force });
+    await sequelize.sync();
     console.log('📊 Todos los modelos sincronizados correctamente');
-    
-    // Si es force=true, crear usuario admin por defecto
-    if (force) {
-      await createDefaultAdmin();
-    }
   } catch (error) {
     console.error('❌ Error sincronizando modelos:', error);
   }

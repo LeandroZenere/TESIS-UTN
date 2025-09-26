@@ -128,6 +128,12 @@ const Invoice = sequelize.define('invoices', {
   admin_notes: {
     type: DataTypes.TEXT,
     allowNull: true // Solo el admin puede editarlas
+  },
+
+  original_invoice: {
+  type: DataTypes.STRING,
+  allowNull: true,
+  comment: 'Nombre del archivo PDF de la factura original escaneada'
   }
 });
 
@@ -159,5 +165,6 @@ Invoice.prototype.getDaysUntilDue = function() {
   const diffTime = dueDate - today;
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
+
 
 module.exports = Invoice;

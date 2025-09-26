@@ -12,18 +12,12 @@ const router = express.Router();
 router.get('/payment-file/:filename', (req, res) => {
   try {
     const filename = req.params.filename;
-    // CORREGIDO: Usar ../../uploads/payments en lugar de ../uploads/payments
     const filePath = path.join(__dirname, '../../uploads/payments', filename);
-    
-    console.log('DEBUG: Buscando archivo:', filename);
-    console.log('DEBUG: Ruta completa:', filePath);
-    console.log('DEBUG: Archivo existe?', fs.existsSync(filePath));
-    
-    if (fs.existsSync(filePath)) {
-      console.log('DEBUG: Enviando archivo...');
+  
+    if (fs.existsSync(filePath)) { //Enviando archivo
       res.sendFile(path.resolve(filePath));
     } else {
-      console.log('DEBUG: Archivo NO encontrado');
+      //Archivo no encontrado
       res.status(404).json({
         success: false,
         message: 'Archivo no encontrado'
@@ -31,6 +25,29 @@ router.get('/payment-file/:filename', (req, res) => {
     }
   } catch (error) {
     console.error('Error sirviendo archivo:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// GET /api/invoices/original-file/:filename - Servir archivo de factura original
+router.get('/original-file/:filename', (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join(__dirname, '../../uploads/originals', filename);
+    
+    if (fs.existsSync(filePath)) {
+      res.sendFile(path.resolve(filePath));
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Archivo original no encontrado'
+      });
+    }
+  } catch (error) {
+    console.error('Error sirviendo archivo original:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'
@@ -173,8 +190,19 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/invoices - Crear nueva factura
-router.post('/', async (req, res) => {
+// POST /api/invoices - Crear nueva factura CON archivo original
+router.post('/', (req, res, next) => {
+  upload.fields([{ name: 'original_invoice', maxCount: 1 }])(req, res, (err) => {
+    if (err) {
+      console.error('ERROR UPLOAD:', err);
+      return res.status(400).json({
+        success: false,
+        message: `Error subiendo archivo: ${err.message}`
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const {
       supplier_id,
@@ -193,6 +221,14 @@ router.post('/', async (req, res) => {
       expense_subcategory,
       notes
     } = req.body;
+
+          let originalInvoiceFile = null;
+      if (req.files && req.files.original_invoice) {
+        originalInvoiceFile = req.files.original_invoice[0].filename;
+        //Archivo original recibido
+      } else {
+        console.log('DEBUG: No se recibió archivo original');
+      }
 
     // Validaciones básicas
     if (!supplier_id || !invoice_number || !invoice_date || !payment_type || !expense_category) {
@@ -233,7 +269,8 @@ router.post('/', async (req, res) => {
       total_amount: 0, // Se calculará después
       expense_category,
       expense_subcategory,
-      notes
+      notes,
+      original_invoice: originalInvoiceFile
     });
 
     // Calcular el total automáticamente
@@ -381,17 +418,13 @@ router.put('/:id/mark-paid', requireAdmin, upload.single('payment_file'), async 
 
     // Si se subió un archivo, guardarlo
 if (req.file) {
-  console.log('DEBUG: Archivo recibido:', req.file.filename);
   updateData.payment_proof = req.file.filename;
 } else {
   console.log('DEBUG: No se recibió archivo');
 }
 
-console.log('DEBUG: updateData final:', updateData);
 
 await invoice.update(updateData);
-
-console.log('DEBUG: Factura actualizada con payment_proof:', invoice.payment_proof);
 
     res.json({
       success: true,
@@ -933,5 +966,6 @@ router.get('/reports/summary', async (req, res) => {
     });
   }
 });
+
 
 module.exports = router;
