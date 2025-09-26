@@ -411,8 +411,8 @@ const resetForm = () => {
   try {
     setLoading(true);
     
-    // Usar la nueva ruta del backend que incluye el comprobante embebido
-    const response = await fetch(`http://localhost:3001/api/invoices/${invoice.id}/report`, {
+    // Usar la nueva ruta PDF que genera PDFKit directamente
+    const response = await fetch(`http://localhost:3001/api/invoices/${invoice.id}/pdf`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -420,30 +420,28 @@ const resetForm = () => {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Error al generar el reporte');
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al generar el PDF');
     }
 
-    // Obtener el contenido HTML del reporte
-    const htmlContent = await response.text();
-    
-    // Crear y descargar el archivo HTML
-    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    // El servidor ya envía el PDF como descarga directa
+    // Crear enlace de descarga desde el blob
+    const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `reporte_completo_${invoice.invoice_number.replace(/[\/\\:*?"<>|]/g, '_')}_${new Date().toISOString().split('T')[0]}.html`;
+    a.download = `reporte_factura_${invoice.invoice_number.replace(/[\/\\:*?"<>|]/g, '_')}.pdf`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
 
-    console.log('Reporte descargado exitosamente');
+    console.log('PDF descargado exitosamente');
     
   } catch (error) {
-    console.error('Error al descargar reporte:', error);
-    setError(`Error al generar el reporte: ${error.message}`);
+    console.error('Error al descargar PDF:', error);
+    setError(`Error al generar el PDF: ${error.message}`);
   } finally {
     setLoading(false);
   }
@@ -1570,7 +1568,7 @@ const resetForm = () => {
                             <>
                               <div style={{ 
                                 color: '#666', 
-                                fontSize: '11px',
+                                fontSize: '10px',
                                 padding: '5px',
                                 textAlign: 'center'
                               }}>
@@ -1591,7 +1589,7 @@ const resetForm = () => {
                                 }}
                                 title="Descargar resumen con comprobante"
                               >
-                                📄 Descargar
+                                📄 Descargar PDF
                               </button>
                             </>
                           )}
