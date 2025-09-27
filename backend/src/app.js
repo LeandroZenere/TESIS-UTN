@@ -23,10 +23,12 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const authRoutes = require('./routes/auth');
 const suppliersRoutes = require('./routes/suppliers');
 const invoicesRoutes = require('./routes/invoices');
+const statsRoutes = require('./routes/stats');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/invoices', invoicesRoutes);
+app.use('/api/stats', statsRoutes);
 
 // Ruta principal
 app.get('/', (req, res) => {

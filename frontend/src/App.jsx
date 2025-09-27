@@ -1,14 +1,22 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './components/Login'
 import Suppliers from './components/Suppliers'
 import Invoices from './components/Invoices'
 
 function AppContent() {
-  const { user, loading, logout } = useAuth()
+  const { user, loading, logout, token } = useAuth()
   const [currentView, setCurrentView] = useState('dashboard')
+  
+  // AGREGAR: Estados para estadísticas
+  const [dashboardStats, setDashboardStats] = useState({
+    activeSuppliers: 0,
+    pendingInvoices: 0,
+    paidInvoices: 0
+  })
+  const [statsLoading, setStatsLoading] = useState(true)
 
-  // Estilos SerGas
+  // Estilos SerGas (mantener igual)
   const sergasStyles = {
     colors: {
       primary: '#FFC107',      // Amarillo SerGas
@@ -35,7 +43,45 @@ function AppContent() {
     }
   }
 
-  // Componente de Botón Personalizado SerGas
+  // AGREGAR: Función para cargar estadísticas
+  const loadDashboardStats = async () => {
+    try {
+      setStatsLoading(true)
+      
+      const response = await fetch('http://localhost:3001/api/stats/dashboard', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setDashboardStats({
+          activeSuppliers: data.data.activeSuppliers,
+          pendingInvoices: data.data.pendingInvoices,
+          paidInvoices: data.data.paidInvoices
+        })
+      } else {
+        console.error('Error loading stats:', data.message)
+      }
+    } catch (error) {
+      console.error('Error loading dashboard stats:', error)
+    } finally {
+      setStatsLoading(false)
+    }
+  }
+
+  // AGREGAR: useEffect para cargar estadísticas
+  useEffect(() => {
+    if (user && token && currentView === 'dashboard') {
+      loadDashboardStats()
+    }
+  }, [user, token, currentView])
+
+  // Componente de Botón Personalizado SerGas (mantener igual)
   const SerGasButton = ({ 
     children, 
     variant = 'primary', 
@@ -180,7 +226,7 @@ function AppContent() {
       minHeight: '100vh', 
       background: sergasStyles.gradients.background
     }}>
-      {/* Header con branding SerGas */}
+      {/* Header con branding SerGas (mantener igual) */}
       <header style={{
         background: sergasStyles.gradients.primary,
         padding: '20px 32px',
@@ -191,7 +237,6 @@ function AppContent() {
         position: 'relative',
         overflow: 'hidden'
       }}>
-        {/* Patrón de fondo sutil */}
         <div style={{
           position: 'absolute',
           top: '-50px',
@@ -298,7 +343,7 @@ function AppContent() {
             </p>
           </div>
           
-          {/* Grid de tarjetas */}
+          {/* Grid de tarjetas (mantener igual) */}
           <div style={{ 
             display: 'grid', 
             gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
@@ -325,7 +370,6 @@ function AppContent() {
               e.target.style.transform = 'translateY(0)'
               e.target.style.boxShadow = sergasStyles.shadows.card
             }}>
-              {/* Icono decorativo */}
               <div style={{
                 position: 'absolute',
                 top: '16px',
@@ -384,7 +428,6 @@ function AppContent() {
               e.target.style.transform = 'translateY(0)'
               e.target.style.boxShadow = sergasStyles.shadows.card
             }}>
-              {/* Icono decorativo */}
               <div style={{
                 position: 'absolute',
                 top: '16px',
@@ -436,7 +479,6 @@ function AppContent() {
               overflow: 'hidden',
               opacity: 0.7
             }}>
-              {/* Icono decorativo */}
               <div style={{
                 position: 'absolute',
                 top: '16px',
@@ -477,7 +519,7 @@ function AppContent() {
             </div>
           </div>
 
-          {/* Sección de estadísticas rápidas */}
+          {/* MODIFICAR: Sección de estadísticas rápidas con datos reales */}
           <div style={{
             marginTop: '48px',
             background: sergasStyles.colors.white,
@@ -496,101 +538,118 @@ function AppContent() {
               Resumen Rápido
             </h3>
             
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '24px'
-            }}>
-              <div style={{ textAlign: 'center' }}>
+            {statsLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
                 <div style={{
-                  width: '60px',
-                  height: '60px',
-                  background: sergasStyles.gradients.primary,
+                  width: '30px',
+                  height: '30px',
+                  border: `3px solid ${sergasStyles.colors.primary}20`,
+                  borderTop: `3px solid ${sergasStyles.colors.primary}`,
                   borderRadius: '50%',
-                  margin: '0 auto 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <span style={{ fontSize: '24px', color: sergasStyles.colors.dark }}>🏢</span>
-                </div>
-                <p style={{ 
-                  color: sergasStyles.colors.gray, 
-                  fontSize: '14px', 
-                  margin: '0 0 4px 0' 
-                }}>
-                  Proveedores Activos
-                </p>
-                <p style={{ 
-                  color: sergasStyles.colors.dark, 
-                  fontSize: '24px', 
-                  fontWeight: '700',
-                  margin: 0
-                }}>
-                  -
+                  animation: 'spin 1s linear infinite',
+                  margin: '0 auto'
+                }} />
+                <p style={{ color: sergasStyles.colors.gray, marginTop: '12px', fontSize: '14px' }}>
+                  Cargando estadísticas...
                 </p>
               </div>
-              
-              <div style={{ textAlign: 'center' }}>
-                <div style={{
-                  width: '60px',
-                  height: '60px',
-                  background: sergasStyles.gradients.secondary,
-                  borderRadius: '50%',
-                  margin: '0 auto 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <span style={{ fontSize: '24px', color: sergasStyles.colors.white }}>📄</span>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '24px'
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{
+                    width: '60px',
+                    height: '60px',
+                    background: sergasStyles.gradients.primary,
+                    borderRadius: '50%',
+                    margin: '0 auto 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <span style={{ fontSize: '24px', color: sergasStyles.colors.dark }}>🏢</span>
+                  </div>
+                  <p style={{ 
+                    color: sergasStyles.colors.gray, 
+                    fontSize: '14px', 
+                    margin: '0 0 4px 0' 
+                  }}>
+                    Proveedores Activos
+                  </p>
+                  <p style={{ 
+                    color: sergasStyles.colors.dark, 
+                    fontSize: '24px', 
+                    fontWeight: '700',
+                    margin: 0
+                  }}>
+                    {dashboardStats.activeSuppliers}
+                  </p>
                 </div>
-                <p style={{ 
-                  color: sergasStyles.colors.gray, 
-                  fontSize: '14px', 
-                  margin: '0 0 4px 0' 
-                }}>
-                  Facturas Pendientes
-                </p>
-                <p style={{ 
-                  color: sergasStyles.colors.dark, 
-                  fontSize: '24px', 
-                  fontWeight: '700',
-                  margin: 0
-                }}>
-                  -
-                </p>
-              </div>
-              
-              <div style={{ textAlign: 'center' }}>
-                <div style={{
-                  width: '60px',
-                  height: '60px',
-                  background: `linear-gradient(135deg, ${sergasStyles.colors.success} 0%, #16A34A 100%)`,
-                  borderRadius: '50%',
-                  margin: '0 auto 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <span style={{ fontSize: '24px', color: sergasStyles.colors.white }}>✅</span>
+                
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{
+                    width: '60px',
+                    height: '60px',
+                    background: sergasStyles.gradients.secondary,
+                    borderRadius: '50%',
+                    margin: '0 auto 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <span style={{ fontSize: '24px', color: sergasStyles.colors.white }}>📄</span>
+                  </div>
+                  <p style={{ 
+                    color: sergasStyles.colors.gray, 
+                    fontSize: '14px', 
+                    margin: '0 0 4px 0' 
+                  }}>
+                    Facturas Pendientes
+                  </p>
+                  <p style={{ 
+                    color: sergasStyles.colors.dark, 
+                    fontSize: '24px', 
+                    fontWeight: '700',
+                    margin: 0
+                  }}>
+                    {dashboardStats.pendingInvoices}
+                  </p>
                 </div>
-                <p style={{ 
-                  color: sergasStyles.colors.gray, 
-                  fontSize: '14px', 
-                  margin: '0 0 4px 0' 
-                }}>
-                  Facturas Pagadas
-                </p>
-                <p style={{ 
-                  color: sergasStyles.colors.dark, 
-                  fontSize: '24px', 
-                  fontWeight: '700',
-                  margin: 0
-                }}>
-                  -
-                </p>
+                
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{
+                    width: '60px',
+                    height: '60px',
+                    background: `linear-gradient(135deg, ${sergasStyles.colors.success} 0%, #16A34A 100%)`,
+                    borderRadius: '50%',
+                    margin: '0 auto 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <span style={{ fontSize: '24px', color: sergasStyles.colors.white }}>✅</span>
+                  </div>
+                  <p style={{ 
+                    color: sergasStyles.colors.gray, 
+                    fontSize: '14px', 
+                    margin: '0 0 4px 0' 
+                  }}>
+                    Facturas Pagadas
+                  </p>
+                  <p style={{ 
+                    color: sergasStyles.colors.dark, 
+                    fontSize: '24px', 
+                    fontWeight: '700',
+                    margin: 0
+                  }}>
+                    {dashboardStats.paidInvoices}
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </main>
