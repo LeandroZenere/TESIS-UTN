@@ -10,6 +10,32 @@ export default function Suppliers({ onBack }) {
   const [editingSupplier, setEditingSupplier] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
 
+  // Estilos SerGas
+  const sergasStyles = {
+    colors: {
+      primary: '#FFC107',      // Amarillo SerGas
+      secondary: '#FF8C00',    // Naranja
+      accent: '#E53E3E',       // Rojo
+      dark: '#1A1A1A',         // Negro/Gris oscuro
+      gray: '#4A5568',         // Gris medio
+      lightGray: '#F7FAFC',    // Gris claro
+      white: '#FFFFFF',
+      success: '#22C55E',      // Verde para estados positivos
+      warning: '#F59E0B',      // Amarillo/naranja para advertencias
+      error: '#EF4444'         // Rojo para errores
+    },
+    shadows: {
+      card: '0 4px 16px rgba(255, 193, 7, 0.15)',
+      button: '0 2px 8px rgba(255, 193, 7, 0.3)',
+      modal: '0 20px 40px rgba(0, 0, 0, 0.3)'
+    },
+    gradients: {
+      primary: 'linear-gradient(135deg, #FFC107 0%, #FF8C00 100%)',
+      secondary: 'linear-gradient(135deg, #FF8C00 0%, #E53E3E 100%)',
+      accent: 'linear-gradient(135deg, #E53E3E 0%, #DC2626 100%)'
+    }
+  }
+
   const [formData, setFormData] = useState({
     cuit: '',
     category: 'responsable_inscripto',
@@ -205,448 +231,896 @@ export default function Suppliers({ onBack }) {
     supplier.cuit.includes(searchTerm)
   )
 
+  // Componente de Botón Personalizado SerGas
+  const SerGasButton = ({ 
+    children, 
+    variant = 'primary', 
+    size = 'medium', 
+    onClick, 
+    disabled = false, 
+    type = 'button',
+    style = {},
+    ...props 
+  }) => {
+    const getButtonStyle = () => {
+      const baseStyle = {
+        border: 'none',
+        borderRadius: '8px',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        fontWeight: '600',
+        fontSize: size === 'small' ? '12px' : size === 'large' ? '16px' : '14px',
+        padding: size === 'small' ? '6px 12px' : size === 'large' ? '14px 28px' : '10px 20px',
+        transition: 'all 0.3s ease',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '6px',
+        opacity: disabled ? 0.6 : 1,
+        ...style
+      }
+
+      switch (variant) {
+        case 'primary':
+          return {
+            ...baseStyle,
+            background: sergasStyles.gradients.primary,
+            color: sergasStyles.colors.dark,
+            boxShadow: disabled ? 'none' : sergasStyles.shadows.button,
+          }
+        case 'secondary':
+          return {
+            ...baseStyle,
+            background: sergasStyles.gradients.secondary,
+            color: sergasStyles.colors.white,
+            boxShadow: disabled ? 'none' : sergasStyles.shadows.button,
+          }
+        case 'accent':
+          return {
+            ...baseStyle,
+            background: sergasStyles.gradients.accent,
+            color: sergasStyles.colors.white,
+            boxShadow: disabled ? 'none' : sergasStyles.shadows.button,
+          }
+        case 'outline':
+          return {
+            ...baseStyle,
+            background: 'transparent',
+            color: sergasStyles.colors.primary,
+            border: `2px solid ${sergasStyles.colors.primary}`,
+            boxShadow: 'none',
+          }
+        case 'ghost':
+          return {
+            ...baseStyle,
+            background: 'transparent',
+            color: sergasStyles.colors.gray,
+            boxShadow: 'none',
+          }
+        case 'success':
+          return {
+            ...baseStyle,
+            background: sergasStyles.colors.success,
+            color: sergasStyles.colors.white,
+          }
+        case 'warning':
+          return {
+            ...baseStyle,
+            background: sergasStyles.colors.warning,
+            color: sergasStyles.colors.white,
+          }
+        case 'error':
+          return {
+            ...baseStyle,
+            background: sergasStyles.colors.error,
+            color: sergasStyles.colors.white,
+          }
+        default:
+          return baseStyle
+      }
+    }
+
+    return (
+      <button
+        type={type}
+        onClick={onClick}
+        disabled={disabled}
+        style={getButtonStyle()}
+        {...props}
+      >
+        {children}
+      </button>
+    )
+  }
+
   if (showForm) {
     return (
-      <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-        <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            onClick={() => {
-              setShowForm(false)
-              resetForm()
-            }}
-            style={{
-              backgroundColor: '#666',
-              color: 'white',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '5px',
-              cursor: 'pointer'
-            }}
-          >
-            ← Volver
-          </button>
-          <h2 style={{ margin: 0, color: '#333' }}>
-            {editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
-          </h2>
-        </div>
-
-        {error && (
+      <div style={{ 
+        minHeight: '100vh',
+        background: `linear-gradient(135deg, ${sergasStyles.colors.lightGray} 0%, ${sergasStyles.colors.white} 100%)`,
+        padding: '20px'
+      }}>
+        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+          {/* Header con gradiente SerGas */}
           <div style={{
-            backgroundColor: '#fee',
-            border: '1px solid #fcc',
-            color: '#c33',
-            padding: '10px',
-            borderRadius: '5px',
-            marginBottom: '20px'
+            background: sergasStyles.gradients.primary,
+            borderRadius: '16px 16px 0 0',
+            padding: '24px 32px',
+            marginBottom: '0',
+            boxShadow: sergasStyles.shadows.card
           }}>
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} style={{
-          backgroundColor: 'white',
-          padding: '30px',
-          borderRadius: '10px',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                CUIT *
-              </label>
-              <input
-                type="text"
-                value={formData.cuit}
-                onChange={handleCuitChange}
-                placeholder="20-12345678-9"
-                maxLength="13"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: `1px solid ${formData.cuit && !validateCuit(formData.cuit.replace(/\D/g, '')) ? '#f44336' : '#ddd'}`,
-                  borderRadius: '5px'
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <SerGasButton 
+                variant="ghost"
+                onClick={() => {
+                  setShowForm(false)
+                  resetForm()
                 }}
-              />
-              {formData.cuit && !validateCuit(formData.cuit.replace(/\D/g, '')) && (
-                <small style={{ color: '#f44336', fontSize: '12px' }}>
-                  El CUIT debe tener 11 dígitos
-                </small>
-              )}
-            </div>
-
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                Categoría Fiscal *
-              </label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({...formData, category: e.target.value})}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '1px solid #ddd',
-                  borderRadius: '5px'
+                style={{ 
+                  color: sergasStyles.colors.dark,
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(10px)'
                 }}
               >
-                <option value="responsable_inscripto">Responsable Inscripto</option>
-                <option value="monotributista">Monotributista</option>
-                <option value="iva_exento">IVA Exento</option>
-              </select>
+                ← Volver
+              </SerGasButton>
+              
+              <h2 style={{ 
+                margin: 0, 
+                color: sergasStyles.colors.dark,
+                fontSize: '28px',
+                fontWeight: '700'
+              }}>
+                {editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
+              </h2>
             </div>
           </div>
 
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-              Razón Social *
-            </label>
-            <input
-              type="text"
-              value={formData.business_name}
-              onChange={(e) => setFormData({...formData, business_name: e.target.value})}
-              placeholder="Nombre de la empresa"
-              style={{
-                width: '100%',
-                padding: '10px',
-                border: '1px solid #ddd',
-                borderRadius: '5px'
-              }}
-            />
+          {/* Contenido del formulario */}
+          <div style={{
+            background: sergasStyles.colors.white,
+            borderRadius: '0 0 16px 16px',
+            padding: '32px',
+            boxShadow: sergasStyles.shadows.card
+          }}>
+            {error && (
+              <div style={{
+                background: `linear-gradient(135deg, ${sergasStyles.colors.error}15 0%, ${sergasStyles.colors.error}25 100%)`,
+                border: `2px solid ${sergasStyles.colors.error}`,
+                color: sergasStyles.colors.error,
+                padding: '16px 20px',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                fontWeight: '500'
+              }}>
+                <span style={{ fontSize: '20px' }}>⚠️</span>
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit}>
+              {/* Información básica */}
+              <div style={{
+                background: `linear-gradient(135deg, ${sergasStyles.colors.lightGray} 0%, ${sergasStyles.colors.white} 100%)`,
+                padding: '24px',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                border: `1px solid ${sergasStyles.colors.primary}20`
+              }}>
+                <h3 style={{ 
+                  color: sergasStyles.colors.dark, 
+                  marginBottom: '20px',
+                  fontSize: '18px',
+                  fontWeight: '600'
+                }}>
+                  Información Fiscal
+                </h3>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontWeight: '600',
+                      color: sergasStyles.colors.dark 
+                    }}>
+                      CUIT *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.cuit}
+                      onChange={handleCuitChange}
+                      placeholder="20-12345678-9"
+                      maxLength="13"
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: `2px solid ${formData.cuit && !validateCuit(formData.cuit.replace(/\D/g, '')) ? sergasStyles.colors.error : `${sergasStyles.colors.primary}40`}`,
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        backgroundColor: sergasStyles.colors.white
+                      }}
+                    />
+                    {formData.cuit && !validateCuit(formData.cuit.replace(/\D/g, '')) && (
+                      <small style={{ color: sergasStyles.colors.error, fontSize: '12px' }}>
+                        El CUIT debe tener 11 dígitos
+                      </small>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontWeight: '600',
+                      color: sergasStyles.colors.dark 
+                    }}>
+                      Categoría Fiscal *
+                    </label>
+                    <select
+                      value={formData.category}
+                      onChange={(e) => setFormData({...formData, category: e.target.value})}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: `2px solid ${sergasStyles.colors.primary}40`,
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        backgroundColor: sergasStyles.colors.white,
+                        color: sergasStyles.colors.dark
+                      }}
+                    >
+                      <option value="responsable_inscripto">Responsable Inscripto</option>
+                      <option value="monotributista">Monotributista</option>
+                      <option value="iva_exento">IVA Exento</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px', 
+                    fontWeight: '600',
+                    color: sergasStyles.colors.dark 
+                  }}>
+                    Razón Social *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.business_name}
+                    onChange={(e) => setFormData({...formData, business_name: e.target.value})}
+                    placeholder="Nombre de la empresa"
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: `2px solid ${sergasStyles.colors.primary}40`,
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      backgroundColor: sergasStyles.colors.white
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Domicilio */}
+              <div style={{
+                background: `linear-gradient(135deg, ${sergasStyles.colors.lightGray} 0%, ${sergasStyles.colors.white} 100%)`,
+                padding: '24px',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                border: `1px solid ${sergasStyles.colors.primary}20`
+              }}>
+                <h3 style={{ 
+                  color: sergasStyles.colors.dark, 
+                  marginBottom: '20px',
+                  fontSize: '18px',
+                  fontWeight: '600'
+                }}>
+                  Domicilio Fiscal
+                </h3>
+                
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px', 
+                    fontWeight: '600',
+                    color: sergasStyles.colors.dark 
+                  }}>
+                    Dirección *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.fiscal_address}
+                    onChange={(e) => setFormData({...formData, fiscal_address: e.target.value})}
+                    placeholder="Dirección completa"
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: `2px solid ${sergasStyles.colors.primary}40`,
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      backgroundColor: sergasStyles.colors.white
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontWeight: '600',
+                      color: sergasStyles.colors.dark 
+                    }}>
+                      Provincia *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.province}
+                      onChange={handleProvinceChange}
+                      placeholder="Buenos Aires"
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: `2px solid ${formData.province && !validateTextOnly(formData.province) ? sergasStyles.colors.error : `${sergasStyles.colors.primary}40`}`,
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        backgroundColor: sergasStyles.colors.white
+                      }}
+                    />
+                    {formData.province && !validateTextOnly(formData.province) && (
+                      <small style={{ color: sergasStyles.colors.error, fontSize: '12px' }}>
+                        Solo se permiten letras, espacios y guiones
+                      </small>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontWeight: '600',
+                      color: sergasStyles.colors.dark 
+                    }}>
+                      Ciudad *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.city}
+                      onChange={handleCityChange}
+                      placeholder="La Plata"
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: `2px solid ${formData.city && !validateTextOnly(formData.city) ? sergasStyles.colors.error : `${sergasStyles.colors.primary}40`}`,
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        backgroundColor: sergasStyles.colors.white
+                      }}
+                    />
+                    {formData.city && !validateTextOnly(formData.city) && (
+                      <small style={{ color: sergasStyles.colors.error, fontSize: '12px' }}>
+                        Solo se permiten letras, espacios y guiones
+                      </small>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontWeight: '600',
+                      color: sergasStyles.colors.dark 
+                    }}>
+                      Código Postal
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.postal_code}
+                      onChange={(e) => setFormData({...formData, postal_code: e.target.value})}
+                      placeholder="CP"
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: `2px solid ${sergasStyles.colors.primary}40`,
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        backgroundColor: sergasStyles.colors.white
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Contacto */}
+              <div style={{
+                background: `linear-gradient(135deg, ${sergasStyles.colors.lightGray} 0%, ${sergasStyles.colors.white} 100%)`,
+                padding: '24px',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                border: `1px solid ${sergasStyles.colors.primary}20`
+              }}>
+                <h3 style={{ 
+                  color: sergasStyles.colors.dark, 
+                  marginBottom: '20px',
+                  fontSize: '18px',
+                  fontWeight: '600'
+                }}>
+                  Información de Contacto
+                </h3>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontWeight: '600',
+                      color: sergasStyles.colors.dark 
+                    }}>
+                      Teléfono
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.phone}
+                      onChange={handlePhoneChange}
+                      placeholder="011-1234-5678"
+                      maxLength="20"
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: `2px solid ${formData.phone && !validatePhone(formData.phone) ? sergasStyles.colors.error : `${sergasStyles.colors.primary}40`}`,
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        backgroundColor: sergasStyles.colors.white
+                      }}
+                    />
+                    {formData.phone && !validatePhone(formData.phone) && (
+                      <small style={{ color: sergasStyles.colors.error, fontSize: '12px' }}>
+                        Solo se permiten números, espacios, guiones, paréntesis y el signo +
+                      </small>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontWeight: '600',
+                      color: sergasStyles.colors.dark 
+                    }}>
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({...formData, email: e.target.value})}
+                      placeholder="contacto@empresa.com"
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: `2px solid ${sergasStyles.colors.primary}40`,
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        backgroundColor: sergasStyles.colors.white
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Notas */}
+              <div style={{
+                background: `linear-gradient(135deg, ${sergasStyles.colors.lightGray} 0%, ${sergasStyles.colors.white} 100%)`,
+                padding: '24px',
+                borderRadius: '12px',
+                marginBottom: '32px',
+                border: `1px solid ${sergasStyles.colors.primary}20`
+              }}>
+                <h3 style={{ 
+                  color: sergasStyles.colors.dark, 
+                  marginBottom: '20px',
+                  fontSize: '18px',
+                  fontWeight: '600'
+                }}>
+                  Observaciones
+                </h3>
+                
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px', 
+                    fontWeight: '600',
+                    color: sergasStyles.colors.dark 
+                  }}>
+                    Notas
+                  </label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={handleNotesChange}
+                    placeholder="Observaciones adicionales"
+                    rows="3"
+                    maxLength="150"
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: `2px solid ${sergasStyles.colors.primary}40`,
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      backgroundColor: sergasStyles.colors.white,
+                      resize: 'vertical',
+                      fontFamily: 'inherit'
+                    }}
+                  />
+                  <div style={{ 
+                    textAlign: 'right', 
+                    fontSize: '12px', 
+                    color: formData.notes.length > 140 ? sergasStyles.colors.error : sergasStyles.colors.gray,
+                    marginTop: '6px'
+                  }}>
+                    {formData.notes.length}/150 caracteres
+                  </div>
+                </div>
+              </div>
+
+              {/* Botones de acción */}
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <SerGasButton
+                  variant="ghost"
+                  size="large"
+                  onClick={() => {
+                    setShowForm(false)
+                    resetForm()
+                  }}
+                >
+                  Cancelar
+                </SerGasButton>
+
+                <SerGasButton
+                  type="submit"
+                  variant="primary"
+                  size="large"
+                  disabled={loading}
+                >
+                  {loading ? 'Guardando...' : (editingSupplier ? 'Actualizar' : 'Crear')} Proveedor
+                </SerGasButton>
+              </div>
+            </form>
           </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-              Domicilio Fiscal *
-            </label>
-            <input
-              type="text"
-              value={formData.fiscal_address}
-              onChange={(e) => setFormData({...formData, fiscal_address: e.target.value})}
-              placeholder="Dirección completa"
-              style={{
-                width: '100%',
-                padding: '10px',
-                border: '1px solid #ddd',
-                borderRadius: '5px'
-              }}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                Provincia *
-              </label>
-              <input
-                type="text"
-                value={formData.province}
-                onChange={handleProvinceChange}
-                placeholder="Buenos Aires"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: `1px solid ${formData.province && !validateTextOnly(formData.province) ? '#f44336' : '#ddd'}`,
-                  borderRadius: '5px'
-                }}
-              />
-              {formData.province && !validateTextOnly(formData.province) && (
-                <small style={{ color: '#f44336', fontSize: '12px' }}>
-                  Solo se permiten letras, espacios y guiones
-                </small>
-              )}
-            </div>
-
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                Ciudad *
-              </label>
-              <input
-                type="text"
-                value={formData.city}
-                onChange={handleCityChange}
-                placeholder="La Plata"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: `1px solid ${formData.city && !validateTextOnly(formData.city) ? '#f44336' : '#ddd'}`,
-                  borderRadius: '5px'
-                }}
-              />
-              {formData.city && !validateTextOnly(formData.city) && (
-                <small style={{ color: '#f44336', fontSize: '12px' }}>
-                  Solo se permiten letras, espacios y guiones
-                </small>
-              )}
-            </div>
-
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                Código Postal
-              </label>
-              <input
-                type="text"
-                value={formData.postal_code}
-                onChange={(e) => setFormData({...formData, postal_code: e.target.value})}
-                placeholder="CP"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '1px solid #ddd',
-                  borderRadius: '5px'
-                }}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                Teléfono
-              </label>
-              <input
-                type="text"
-                value={formData.phone}
-                onChange={handlePhoneChange}
-                placeholder="011-1234-5678"
-                maxLength="20"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: `1px solid ${formData.phone && !validatePhone(formData.phone) ? '#f44336' : '#ddd'}`,
-                  borderRadius: '5px'
-                }}
-              />
-              {formData.phone && !validatePhone(formData.phone) && (
-                <small style={{ color: '#f44336', fontSize: '12px' }}>
-                  Solo se permiten números, espacios, guiones, paréntesis y el signo +
-                </small>
-              )}
-            </div>
-
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                Email
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                placeholder="contacto@empresa.com"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  border: '1px solid #ddd',
-                  borderRadius: '5px'
-                }}
-              />
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '30px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-              Notas
-            </label>
-            <textarea
-              value={formData.notes}
-              onChange={handleNotesChange}
-              placeholder="Observaciones adicionales"
-              rows="3"
-              maxLength="150"
-              style={{
-                width: '100%',
-                padding: '10px',
-                border: '1px solid #ddd',
-                borderRadius: '5px',
-                resize: 'vertical'
-              }}
-            />
-            <div style={{ 
-              textAlign: 'right', 
-              fontSize: '12px', 
-              color: formData.notes.length > 140 ? '#f44336' : '#666',
-              marginTop: '5px'
-            }}>
-              {formData.notes.length}/150 caracteres
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                backgroundColor: loading ? '#999' : '#4CAF50',
-                color: 'white',
-                border: 'none',
-                padding: '12px 24px',
-                borderRadius: '5px',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                fontSize: '16px'
-              }}
-            >
-              {loading ? 'Guardando...' : (editingSupplier ? 'Actualizar' : 'Crear')} Proveedor
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowForm(false)
-                resetForm()
-              }}
-              style={{
-                backgroundColor: '#666',
-                color: 'white',
-                border: 'none',
-                padding: '12px 24px',
-                borderRadius: '5px',
-                cursor: 'pointer'
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
     )
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            onClick={onBack}
-            style={{
-              backgroundColor: '#666',
-              color: 'white',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '5px',
-              cursor: 'pointer'
-            }}
-          >
-            ← Volver al Dashboard
-          </button>
-          <h2 style={{ margin: 0, color: '#333' }}>Gestión de Proveedores</h2>
-        </div>
-
-        <button
-          onClick={() => setShowForm(true)}
-          style={{
-            backgroundColor: '#4CAF50',
-            color: 'white',
-            border: 'none',
-            padding: '10px 20px',
-            borderRadius: '5px',
-            cursor: 'pointer',
-            fontSize: '16px'
-          }}
-        >
-          + Nuevo Proveedor
-        </button>
-      </div>
-
-      <div style={{ marginBottom: '20px' }}>
-        <input
-          type="text"
-          placeholder="Buscar por razón social o CUIT..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{
-            width: '300px',
-            padding: '10px',
-            border: '1px solid #ddd',
-            borderRadius: '5px',
-            fontSize: '16px'
-          }}
-        />
-      </div>
-
-      {error && (
+    <div style={{ 
+      minHeight: '100vh',
+      background: `linear-gradient(135deg, ${sergasStyles.colors.lightGray} 0%, ${sergasStyles.colors.white} 100%)`,
+      padding: '20px'
+    }}>
+      <div style={{ maxWidth: '1300px', margin: '0 auto' }}>
+        {/* Header principal con branding SerGas */}
         <div style={{
-          backgroundColor: '#fee',
-          border: '1px solid #fcc',
-          color: '#c33',
-          padding: '10px',
-          borderRadius: '5px',
-          marginBottom: '20px'
-        }}>
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px' }}>
-          <p>Cargando proveedores...</p>
-        </div>
-      ) : (
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '10px',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+          background: sergasStyles.gradients.primary,
+          borderRadius: '16px',
+          padding: '32px',
+          marginBottom: '24px',
+          boxShadow: sergasStyles.shadows.card,
+          position: 'relative',
           overflow: 'hidden'
         }}>
-          {filteredSuppliers.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
-              {suppliers.length === 0 ? 'No hay proveedores registrados' : 'No se encontraron proveedores con ese criterio'}
+          {/* Patrón de fondo sutil */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '200px',
+            height: '200px',
+            background: `radial-gradient(circle, ${sergasStyles.colors.secondary}20 0%, transparent 70%)`,
+            borderRadius: '50%',
+            transform: 'translate(50%, -50%)'
+          }} />
+          
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            position: 'relative',
+            zIndex: 1
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <SerGasButton
+                onClick={onBack}
+                variant="ghost"
+                style={{ 
+                  color: sergasStyles.colors.dark,
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  backdropFilter: 'blur(10px)',
+                  border: `1px solid rgba(255, 255, 255, 0.3)`
+                }}
+              >
+                ← Volver al Dashboard
+              </SerGasButton>
+              
+              <div>
+                <h2 style={{ 
+                  margin: 0, 
+                  color: sergasStyles.colors.dark,
+                  fontSize: '32px',
+                  fontWeight: '700',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                }}>
+                  Gestión de Proveedores
+                </h2>
+                <p style={{ 
+                  margin: '4px 0 0 0', 
+                  color: sergasStyles.colors.dark,
+                  fontSize: '16px',
+                  opacity: 0.8
+                }}>
+                  Administra tu base de datos de proveedores
+                </p>
+              </div>
             </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f8f9fa' }}>
-                    <th style={{ padding: '15px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>CUIT</th>
-                    <th style={{ padding: '15px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Razón Social</th>
-                    <th style={{ padding: '15px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Categoría</th>
-                    <th style={{ padding: '15px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Localidad</th>
-                    <th style={{ padding: '15px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Teléfono</th>
-                    <th style={{ padding: '15px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredSuppliers.map((supplier) => (
-                    <tr key={supplier.id} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '15px' }}>{supplier.cuit}</td>
-                      <td style={{ padding: '15px', fontWeight: 'bold' }}>{supplier.business_name}</td>
-                      <td style={{ padding: '15px' }}>
-                        <span style={{
-                          backgroundColor: supplier.category === 'responsable_inscripto' ? '#e3f2fd' : 
-                                         supplier.category === 'monotributista' ? '#f3e5f5' : '#fff3e0',
-                          color: supplier.category === 'responsable_inscripto' ? '#1976d2' : 
-                                 supplier.category === 'monotributista' ? '#7b1fa2' : '#f57c00',
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          fontSize: '12px'
-                        }}>
-                          {supplier.category === 'responsable_inscripto' ? 'Resp. Inscripto' : 
-                           supplier.category === 'monotributista' ? 'Monotributo' : 'IVA Exento'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '15px' }}>{supplier.city}, {supplier.province}</td>
-                      <td style={{ padding: '15px' }}>{supplier.phone || '-'}</td>
-                      <td style={{ padding: '15px', textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleEdit(supplier)}
-                          style={{
-                            backgroundColor: '#2196F3',
-                            color: 'white',
-                            border: 'none',
-                            padding: '5px 10px',
-                            borderRadius: '3px',
-                            cursor: 'pointer',
-                            fontSize: '12px'
-                          }}
-                        >
-                          Editar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+
+            <SerGasButton
+              onClick={() => setShowForm(true)}
+              variant="secondary"
+              size="large"
+              style={{ boxShadow: sergasStyles.shadows.button }}
+            >
+              + Nuevo Proveedor
+            </SerGasButton>
+          </div>
         </div>
-      )}
+
+        {/* Filtros con estilo SerGas */}
+        <div style={{
+          background: sergasStyles.colors.white,
+          borderRadius: '12px',
+          padding: '24px',
+          marginBottom: '24px',
+          boxShadow: sergasStyles.shadows.card,
+          border: `1px solid ${sergasStyles.colors.primary}20`
+        }}>
+          <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '300px' }}>
+              <input
+                type="text"
+                placeholder="Buscar por razón social o CUIT..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  border: `2px solid ${sergasStyles.colors.primary}40`,
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  backgroundColor: sergasStyles.colors.lightGray,
+                  color: sergasStyles.colors.dark
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{
+            background: `linear-gradient(135deg, ${sergasStyles.colors.error}15 0%, ${sergasStyles.colors.error}25 100%)`,
+            border: `2px solid ${sergasStyles.colors.error}`,
+            color: sergasStyles.colors.error,
+            padding: '16px 20px',
+            borderRadius: '12px',
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontWeight: '500'
+          }}>
+            <span style={{ fontSize: '20px' }}>⚠️</span>
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '60px',
+            background: sergasStyles.colors.white,
+            borderRadius: '12px',
+            boxShadow: sergasStyles.shadows.card
+          }}>
+            <div style={{
+              width: '50px',
+              height: '50px',
+              border: `4px solid ${sergasStyles.colors.primary}20`,
+              borderTop: `4px solid ${sergasStyles.colors.primary}`,
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              margin: '0 auto 20px'
+            }} />
+            <p style={{ color: sergasStyles.colors.gray, fontSize: '18px' }}>Cargando proveedores...</p>
+          </div>
+        ) : (
+          <div style={{
+            background: sergasStyles.colors.white,
+            borderRadius: '12px',
+            boxShadow: sergasStyles.shadows.card,
+            overflow: 'hidden',
+            border: `1px solid ${sergasStyles.colors.primary}20`
+          }}>
+            {filteredSuppliers.length === 0 ? (
+              <div style={{ 
+                padding: '60px', 
+                textAlign: 'center', 
+                color: sergasStyles.colors.gray
+              }}>
+                <div style={{ fontSize: '48px', marginBottom: '20px', opacity: 0.5 }}>🏢</div>
+                <h3 style={{ color: sergasStyles.colors.dark, marginBottom: '10px' }}>
+                  {suppliers.length === 0 ? 'No hay proveedores registrados' : 'No se encontraron proveedores'}
+                </h3>
+                <p>
+                  {suppliers.length === 0 
+                    ? 'Comience registrando su primer proveedor usando el botón "Nuevo Proveedor"'
+                    : 'Intente modificar los criterios de búsqueda'
+                  }
+                </p>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: sergasStyles.gradients.primary }}>
+                      <th style={{ 
+                        padding: '20px 16px', 
+                        textAlign: 'left', 
+                        borderBottom: `2px solid ${sergasStyles.colors.primary}`,
+                        color: sergasStyles.colors.dark,
+                        fontWeight: '600',
+                        fontSize: '14px'
+                      }}>
+                        CUIT
+                      </th>
+                      <th style={{ 
+                        padding: '20px 16px', 
+                        textAlign: 'left', 
+                        borderBottom: `2px solid ${sergasStyles.colors.primary}`,
+                        color: sergasStyles.colors.dark,
+                        fontWeight: '600',
+                        fontSize: '14px'
+                      }}>
+                        Razón Social
+                      </th>
+                      <th style={{ 
+                        padding: '20px 16px', 
+                        textAlign: 'left', 
+                        borderBottom: `2px solid ${sergasStyles.colors.primary}`,
+                        color: sergasStyles.colors.dark,
+                        fontWeight: '600',
+                        fontSize: '14px'
+                      }}>
+                        Categoría
+                      </th>
+                      <th style={{ 
+                        padding: '20px 16px', 
+                        textAlign: 'left', 
+                        borderBottom: `2px solid ${sergasStyles.colors.primary}`,
+                        color: sergasStyles.colors.dark,
+                        fontWeight: '600',
+                        fontSize: '14px'
+                      }}>
+                        Localidad
+                      </th>
+                      <th style={{ 
+                        padding: '20px 16px', 
+                        textAlign: 'left', 
+                        borderBottom: `2px solid ${sergasStyles.colors.primary}`,
+                        color: sergasStyles.colors.dark,
+                        fontWeight: '600',
+                        fontSize: '14px'
+                      }}>
+                        Teléfono
+                      </th>
+                      <th style={{ 
+                        padding: '20px 16px', 
+                        textAlign: 'center', 
+                        borderBottom: `2px solid ${sergasStyles.colors.primary}`,
+                        color: sergasStyles.colors.dark,
+                        fontWeight: '600',
+                        fontSize: '14px'
+                      }}>
+                        Acciones
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSuppliers.map((supplier, index) => (
+                      <tr key={supplier.id} style={{ 
+                        borderBottom: `1px solid ${sergasStyles.colors.primary}20`,
+                        backgroundColor: index % 2 === 0 ? sergasStyles.colors.white : `${sergasStyles.colors.lightGray}50`,
+                        transition: 'background-color 0.2s ease'
+                      }}>
+                        <td style={{ padding: '16px' }}>
+                          <span style={{ 
+                            fontWeight: '600', 
+                            color: sergasStyles.colors.dark,
+                            fontFamily: 'monospace',
+                            fontSize: '14px'
+                          }}>
+                            {supplier.cuit}
+                          </span>
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          <div style={{ fontWeight: '600', color: sergasStyles.colors.dark, marginBottom: '4px' }}>
+                            {supplier.business_name}
+                          </div>
+                          {supplier.email && (
+                            <div style={{ fontSize: '12px', color: sergasStyles.colors.gray }}>
+                              📧 {supplier.email}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          <span style={{
+                            backgroundColor: supplier.category === 'responsable_inscripto' ? `${sergasStyles.colors.accent}15` : 
+                                           supplier.category === 'monotributista' ? `${sergasStyles.colors.secondary}15` : `${sergasStyles.colors.warning}15`,
+                            color: supplier.category === 'responsable_inscripto' ? sergasStyles.colors.accent : 
+                                   supplier.category === 'monotributista' ? sergasStyles.colors.secondary : sergasStyles.colors.warning,
+                            padding: '4px 12px',
+                            borderRadius: '16px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            border: `1px solid ${supplier.category === 'responsable_inscripto' ? `${sergasStyles.colors.accent}30` : 
+                                                 supplier.category === 'monotributista' ? `${sergasStyles.colors.secondary}30` : `${sergasStyles.colors.warning}30`}`
+                          }}>
+                            {supplier.category === 'responsable_inscripto' ? 'Resp. Inscripto' : 
+                             supplier.category === 'monotributista' ? 'Monotributo' : 'IVA Exento'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          <div style={{ color: sergasStyles.colors.dark, fontWeight: '500' }}>
+                            {supplier.city}
+                          </div>
+                          <div style={{ fontSize: '12px', color: sergasStyles.colors.gray }}>
+                            {supplier.province}
+                          </div>
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          <span style={{ 
+                            color: supplier.phone ? sergasStyles.colors.dark : sergasStyles.colors.gray,
+                            fontFamily: supplier.phone ? 'monospace' : 'inherit'
+                          }}>
+                            {supplier.phone || '-'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '16px', textAlign: 'center' }}>
+                          <SerGasButton
+                            onClick={() => handleEdit(supplier)}
+                            variant="accent"
+                            size="small"
+                          >
+                            Editar
+                          </SerGasButton>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Agregar animación de loading */}
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   )
 }

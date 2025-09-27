@@ -521,7 +521,7 @@ router.post('/:id/payment-file', requireAdmin, upload.single('payment_file'), as
   }
 });
 
-// GET /api/invoices/:id/pdf - Generar PDF directamente
+// GET /api/invoices/:id/pdf - Generar PDF
 router.get('/:id/pdf', async (req, res) => {
   try {
     const invoice = await Invoice.findByPk(req.params.id, {
@@ -569,29 +569,45 @@ router.get('/:id/pdf', async (req, res) => {
     
     doc.pipe(res);
 
-    // HEADER
+    // HEADER CON DISEÑO SERGAS
     doc.rect(0, 0, doc.page.width, 80)
-       .fill('#4a90e2');
-    
-    doc.fillColor('white')
-       .fontSize(24)
-       .font('Helvetica-Bold')
-       .text('REPORTE DE FACTURA', 40, 20, { align: 'center' })
-       .fontSize(18)
-       .text(invoice.invoice_number, 40, 45, { align: 'center' });
+       .fill('#FFC107');
+
+    // Efecto degradado sutil
+    doc.rect(0, 0, doc.page.width, 80)
+       .fillOpacity(0.2)
+       .fill('#FF8C00')
+       .fillOpacity(1);
+
+doc.fillColor('#1A1A1A')
+   .fontSize(24)
+   .font('Helvetica-Bold')
+   .text('REPORTE DE FACTURA', 0, 20, { 
+     align: 'center',
+     width: doc.page.width 
+   })
+   .fontSize(18)
+   .text(invoice.invoice_number, 0, 45, { 
+     align: 'center',
+     width: doc.page.width 
+   });
 
     let yPos = 100;
 
-    // Función para títulos compactos
+    // Función para títulos con estilo SerGas
     const addSectionTitle = (title, y) => {
       doc.rect(40, y, 515, 20)
-         .fill('#f5f5f5')
-         .stroke('#ddd');
+         .fill('#f8f9fa')
+         .stroke('#FFC107');
       
-      doc.fillColor('#333')
+      // Barra lateral SerGas
+      doc.rect(40, y, 4, 20)
+         .fill('#FFC107');
+      
+      doc.fillColor('#1A1A1A')
          .fontSize(12)
          .font('Helvetica-Bold')
-         .text(title, 50, y + 6);
+         .text(title, 52, y + 6);
       
       return y + 25;
     };
@@ -624,22 +640,22 @@ router.get('/:id/pdf', async (req, res) => {
     };
 
     // INFORMACIÓN DEL PROVEEDOR
-    yPos = addSectionTitle('INFORMACION DEL PROVEEDOR', yPos);
-    yPos = addCompactData('RAZON SOCIAL', invoice.supplier.business_name, 
+    yPos = addSectionTitle('INFORMACIÓN DEL PROVEEDOR', yPos);
+    yPos = addCompactData('RAZÓN SOCIAL', invoice.supplier.business_name, 
                          'CUIT', invoice.supplier.cuit, yPos);
-    yPos = addCompactData('CATEGORIA', invoice.supplier.category, 
-                         'TELEFONO', invoice.supplier.phone, yPos);
+    yPos = addCompactData('CATEGORÍA', invoice.supplier.category, 
+                         'TELÉFONO', invoice.supplier.phone, yPos);
     yPos += 10;
 
     // DETALLES DE LA FACTURA
     yPos = addSectionTitle('DETALLES DE LA FACTURA', yPos);
-    yPos = addCompactData('NUMERO DE FACTURA', invoice.invoice_number,
-                         'FECHA DE EMISION', new Date(invoice.invoice_date).toLocaleDateString('es-ES'), yPos);
+    yPos = addCompactData('NÚMERO DE FACTURA', invoice.invoice_number,
+                         'FECHA DE EMISIÓN', new Date(invoice.invoice_date).toLocaleDateString('es-ES'), yPos);
     yPos = addCompactData('FECHA DE VENCIMIENTO', 
                          invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('es-ES') : 'N/A',
                          'TIPO DE PAGO', invoice.payment_type, yPos);
-    yPos = addCompactData('CATEGORIA', invoice.expense_category,
-                         'SUBCATEGORIA', invoice.expense_subcategory, yPos);
+    yPos = addCompactData('CATEGORÍA', invoice.expense_category,
+                         'SUBCATEGORÍA', invoice.expense_subcategory, yPos);
     yPos += 10;
 
     // DETALLES FINANCIEROS (TAMAÑO UNIFORME)
@@ -694,18 +710,18 @@ router.get('/:id/pdf', async (req, res) => {
     
     if (parseFloat(invoice.perc_iva || 0) > 0) {
       const subtotal = parseFloat(invoice.perc_iva) / 0.03;
-      yPos = addFinancialRow('PERCEPCION IVA - Subtotal', 
+      yPos = addFinancialRow('PERCEPCIÓN IVA - Subtotal', 
                            `$${subtotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}`, yPos);
-      yPos = addFinancialRow('PERCEPCION IVA - Impuesto', 
+      yPos = addFinancialRow('PERCEPCIÓN IVA - Impuesto', 
                            `$${parseFloat(invoice.perc_iva).toLocaleString('es-ES', { minimumFractionDigits: 2 })}`, yPos);
       rowCount += 2;
     }
     
     if (parseFloat(invoice.perc_iibb || 0) > 0) {
       const subtotal = parseFloat(invoice.perc_iibb) / 0.0175;
-      yPos = addFinancialRow('PERCEPCION IIBB - Subtotal', 
+      yPos = addFinancialRow('PERCEPCIÓN IIBB - Subtotal', 
                            `$${subtotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}`, yPos);
-      yPos = addFinancialRow('PERCEPCION IIBB - Impuesto', 
+      yPos = addFinancialRow('PERCEPCIÓN IIBB - Impuesto', 
                            `$${parseFloat(invoice.perc_iibb).toLocaleString('es-ES', { minimumFractionDigits: 2 })}`, yPos);
       rowCount += 2;
     }
@@ -716,21 +732,25 @@ router.get('/:id/pdf', async (req, res) => {
       rowCount += 1;
     }
 
-    // Aplicar fondo después de escribir
+    // Aplicar fondo SerGas después de escribir
     if (rowCount > 0) {
       const backgroundHeight = rowCount * 16;
       doc.rect(45, financialStartY, 505, backgroundHeight)
-         .fillOpacity(0.1)
-         .fill('#e8f4fd')
+         .fillOpacity(0.05)
+         .fill('#FFC107')
          .fillOpacity(1);
     }
 
-    // TOTAL
+    // TOTAL CON DISEÑO SERGAS
     yPos += 5;
     doc.rect(45, yPos, 505, 30)
-       .fill('#4a90e2');
-    
-    doc.fillColor('white')
+       .fill('#FFC107');
+
+    // Borde lateral
+    doc.rect(45, yPos, 6, 30)
+       .fill('#FF8C00');
+
+    doc.fillColor('#1A1A1A')
        .fontSize(16)
        .font('Helvetica-Bold')
        .text(`TOTAL: $${parseFloat(invoice.total_amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })}`, 
@@ -738,9 +758,23 @@ router.get('/:id/pdf', async (req, res) => {
 
     yPos += 40;
 
-    // ESTADO DEL PAGO (ÚLTIMA SECCIÓN DE PÁGINA 1)
+    // ESTADO DEL PAGO CON COLORES DINÁMICOS
     yPos = addSectionTitle('ESTADO DEL PAGO', yPos);
-    yPos = addCompactData('ESTADO', invoice.is_paid ? 'PAGADA' : 'PENDIENTE', '', '', yPos);
+    
+    const statusColor = invoice.is_paid ? '#FF8C00' : '#E53E3E';
+    const statusText = invoice.is_paid ? 'PAGADA' : 'PENDIENTE';
+    
+    doc.fillColor('#666')
+       .fontSize(8)
+       .font('Helvetica-Bold')
+       .text('ESTADO', 50, yPos);
+    
+    doc.fillColor(statusColor)
+       .fontSize(10)
+       .font('Helvetica-Bold')
+       .text(statusText, 50, yPos + 10);
+    
+    yPos += 25;
     
     if (invoice.is_paid && invoice.paid_date) {
       yPos = addCompactData('FECHA DE PAGO', new Date(invoice.paid_date).toLocaleDateString('es-ES'), '', '', yPos);
@@ -761,12 +795,13 @@ router.get('/:id/pdf', async (req, res) => {
       yPos += 30;
     }
 
-    // FOOTER DE PÁGINA 1 (INFORMACIÓN FIJA - TODO EN UNA SOLA LÍNEA)
+    // FOOTER CON LÍNEA SERGAS
     yPos += 20;
     
     doc.moveTo(50, yPos)
        .lineTo(545, yPos)
-       .strokeColor('#ddd')
+       .strokeColor('#FFC107')
+       .lineWidth(2)
        .stroke();
     
     yPos += 10;
@@ -778,14 +813,19 @@ router.get('/:id/pdf', async (req, res) => {
        .text(`Reporte generado: ${new Date().toLocaleString('es-ES')}`, 50, yPos, { align: 'center' });
     
     yPos += 12;
-    doc.text('Sistema de Gestión de Facturas - v1.0', 50, yPos, { align: 'center' });
+    doc.fillColor('#FFC107')
+       .fontSize(9)
+       .font('Helvetica-Bold')
+       .text('SerGas Management System - v1.0', 50, yPos, { align: 'center' });
 
     if (invoice.creator) {
       yPos += 12;
-      doc.text(`Por: ${invoice.creator.full_name} (${invoice.creator.username})`, 50, yPos, { align: 'center' });
+      doc.fillColor('#666')
+         .fontSize(8)
+         .text(`Por: ${invoice.creator.full_name} (${invoice.creator.username})`, 50, yPos, { align: 'center' });
     }
 
-    // NUEVA PÁGINA EXCLUSIVA PARA COMPROBANTE DE PAGO
+    // NUEVA PÁGINA EXCLUSIVA PARA COMPROBANTE DE PAGO CON ESTILO SERGAS
     if (invoice.payment_proof) {
       try {
         const paymentFilePath = path.join(__dirname, '../../uploads/payments', invoice.payment_proof);
@@ -797,19 +837,22 @@ router.get('/:id/pdf', async (req, res) => {
           const fileExt = path.extname(invoice.payment_proof).toLowerCase();
           let yPosComprobante = 50;
           
-          // Título único de la página de comprobante
+          // Título único de la página de comprobante con estilo SerGas
           doc.rect(40, yPosComprobante, 515, 25)
-             .fill('#f5f5f5')
-             .stroke('#ddd');
+             .fill('#f8f9fa')
+             .stroke('#FFC107');
           
-          doc.fillColor('#333')
+          doc.rect(40, yPosComprobante, 4, 25)
+             .fill('#FFC107');
+          
+          doc.fillColor('#1A1A1A')
              .fontSize(14)
              .font('Helvetica-Bold')
-             .text('COMPROBANTE DE PAGO', 50, yPosComprobante + 8);
+             .text('COMPROBANTE DE PAGO', 52, yPosComprobante + 8);
           
           yPosComprobante += 35;
           
-          doc.fillColor('#28a745')
+          doc.fillColor('#FF8C00')
              .fontSize(12)
              .font('Helvetica-Bold')
              .text('COMPROBANTE ADJUNTO', 50, yPosComprobante);
@@ -830,12 +873,12 @@ router.get('/:id/pdf', async (req, res) => {
               console.log('Imagen insertada correctamente en página dedicada');
             } catch (imgError) {
               console.error('Error cargando imagen:', imgError);
-              doc.fillColor('#dc3545')
+              doc.fillColor('#E53E3E')
                  .fontSize(10)
                  .text('Error al cargar la imagen del comprobante', 50, yPosComprobante + 40);
             }
           } else if (fileExt === '.pdf') {
-            doc.fillColor('#007bff')
+            doc.fillColor('#FF8C00')
                .fontSize(12)
                .font('Helvetica-Bold')
                .text('COMPROBANTE PDF DISPONIBLE', 50, yPosComprobante + 40);
@@ -846,7 +889,7 @@ router.get('/:id/pdf', async (req, res) => {
             
             const pdfUrl = `${req.protocol}://${req.get('host')}/api/invoices/payment-file/${invoice.payment_proof}`;
             
-            doc.fillColor('#007bff')
+            doc.fillColor('#FF8C00')
                .fontSize(10)
                .text(pdfUrl, 50, yPosComprobante + 80, { 
                  link: pdfUrl, 
@@ -862,19 +905,22 @@ router.get('/:id/pdf', async (req, res) => {
           doc.addPage();
           let yPosComprobante = 50;
           
-          // Título único sin duplicar
+          // Título único sin duplicar con estilo SerGas
           doc.rect(40, yPosComprobante, 515, 25)
-             .fill('#f5f5f5')
-             .stroke('#ddd');
+             .fill('#f8f9fa')
+             .stroke('#FFC107');
           
-          doc.fillColor('#333')
+          doc.rect(40, yPosComprobante, 4, 25)
+             .fill('#FFC107');
+          
+          doc.fillColor('#1A1A1A')
              .fontSize(14)
              .font('Helvetica-Bold')
-             .text('COMPROBANTE DE PAGO', 50, yPosComprobante + 8);
+             .text('COMPROBANTE DE PAGO', 52, yPosComprobante + 8);
           
           yPosComprobante += 35;
           
-          doc.fillColor('#dc3545')
+          doc.fillColor('#E53E3E')
              .fontSize(11)
              .font('Helvetica-Bold')
              .text('ARCHIVO NO ENCONTRADO', 50, yPosComprobante);
@@ -889,19 +935,22 @@ router.get('/:id/pdf', async (req, res) => {
         doc.addPage();
         let yPosComprobante = 50;
         
-        // Título único
+        // Título único con estilo SerGas
         doc.rect(40, yPosComprobante, 515, 25)
-           .fill('#f5f5f5')
-           .stroke('#ddd');
+           .fill('#f8f9fa')
+           .stroke('#FFC107');
         
-        doc.fillColor('#333')
+        doc.rect(40, yPosComprobante, 4, 25)
+           .fill('#FFC107');
+        
+        doc.fillColor('#1A1A1A')
            .fontSize(14)
            .font('Helvetica-Bold')
-           .text('COMPROBANTE DE PAGO', 50, yPosComprobante + 8);
+           .text('COMPROBANTE DE PAGO', 52, yPosComprobante + 8);
         
         yPosComprobante += 35;
         
-        doc.fillColor('#dc3545')
+        doc.fillColor('#E53E3E')
            .fontSize(11)
            .text('ERROR AL PROCESAR COMPROBANTE', 50, yPosComprobante);
       }
@@ -910,19 +959,22 @@ router.get('/:id/pdf', async (req, res) => {
       doc.addPage();
       let yPosComprobante = 50;
       
-      // Título único
+      // Título único con estilo SerGas
       doc.rect(40, yPosComprobante, 515, 25)
-         .fill('#f5f5f5')
-         .stroke('#ddd');
+         .fill('#f8f9fa')
+         .stroke('#FFC107');
       
-      doc.fillColor('#333')
+      doc.rect(40, yPosComprobante, 4, 25)
+         .fill('#FFC107');
+      
+      doc.fillColor('#1A1A1A')
          .fontSize(14)
          .font('Helvetica-Bold')
-         .text('COMPROBANTE DE PAGO', 50, yPosComprobante + 8);
+         .text('COMPROBANTE DE PAGO', 52, yPosComprobante + 8);
       
       yPosComprobante += 35;
       
-      doc.fillColor('#ffc107')
+      doc.fillColor('#FFC107')
          .fontSize(11)
          .font('Helvetica-Bold')
          .text('NO HAY COMPROBANTE ADJUNTO', 50, yPosComprobante);

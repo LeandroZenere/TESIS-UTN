@@ -35,7 +35,12 @@ const Invoice = sequelize.define('invoices', {
     type: DataTypes.DATEONLY,
     allowNull: true
   },
-  invoice_type: {
+  load_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: false,
+    defaultValue: DataTypes.NOW
+  },
+    invoice_type: {
     type: DataTypes.ENUM('A', 'B', 'C'),
     allowNull: false
   },
