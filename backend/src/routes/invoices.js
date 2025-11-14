@@ -987,12 +987,20 @@ doc.fillColor('#1A1A1A')
 router.get('/reports/summary', async (req, res) => {
   try {
     const { month, year } = req.query;
-    const currentMonth = month || (new Date().getMonth() + 1);
-    const currentYear = year || new Date().getFullYear();
+    const currentMonth = parseInt(month) || (new Date().getMonth() + 1);
+    const currentYear = parseInt(year) || new Date().getFullYear();
 
+    // Fecha del mes actual
     const startDate = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-01`;
     const endDate = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0];
 
+    // Calcular mes anterior
+    const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const prevStartDate = `${previousYear}-${previousMonth.toString().padStart(2, '0')}-01`;
+    const prevEndDate = new Date(previousYear, previousMonth, 0).toISOString().split('T')[0];
+
+    // Resumen del mes actual
     const summary = await Invoice.findAll({
       where: {
         invoice_date: {
@@ -1009,6 +1017,30 @@ router.get('/reports/summary', async (req, res) => {
     });
 
     const totalAmount = summary.reduce((acc, item) => acc + parseFloat(item.dataValues.total), 0);
+    const totalInvoices = summary.reduce((acc, item) => acc + parseInt(item.dataValues.count), 0);
+
+    // Total del mes anterior
+        const previousMonthData = await Invoice.findOne({
+          where: {
+            invoice_date: {
+              [Op.between]: [prevStartDate, prevEndDate]
+            }
+          },
+          attributes: [
+            [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total']
+          ],
+          raw: true
+        });
+
+        const previousMonthTotal = previousMonthData?.total 
+          ? parseFloat(previousMonthData.total) 
+          : 0;
+
+    // Calcular diferencia y porcentaje
+    const difference = totalAmount - previousMonthTotal;
+    const percentageChange = previousMonthTotal > 0 
+      ? ((difference / previousMonthTotal) * 100).toFixed(1)
+      : (totalAmount > 0 ? 100 : 0);
 
     res.json({
       success: true,
@@ -1016,7 +1048,10 @@ router.get('/reports/summary', async (req, res) => {
         period: `${currentMonth}/${currentYear}`,
         categories: summary,
         total_amount: totalAmount,
-        total_invoices: summary.reduce((acc, item) => acc + parseInt(item.dataValues.count), 0)
+        total_invoices: totalInvoices,
+        previous_month_total: previousMonthTotal,
+        difference: difference,
+        percentage_change: parseFloat(percentageChange)
       }
     });
 
@@ -1028,6 +1063,5 @@ router.get('/reports/summary', async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;

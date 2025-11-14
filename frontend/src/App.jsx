@@ -5,10 +5,12 @@ import Suppliers from './components/Suppliers'
 import Invoices from './components/Invoices'
 import Settings from './components/Settings'
 import ExpenseCategories from './components/ExpenseCategories'
+import Reports from './components/Reports'
 
 function AppContent() {
   const { user, loading, logout, token } = useAuth()
   const [currentView, setCurrentView] = useState('dashboard')
+
   
   
   // AGREGAR: Estados para estadísticas
@@ -235,6 +237,9 @@ function AppContent() {
     return <ExpenseCategories onBack={() => setCurrentView('settings')} />
   }
 
+    if (currentView === 'reports') {
+    return <Reports onBack={() => setCurrentView('dashboard')} />
+  }
   return (
     <div style={{ 
       minHeight: '100vh', 
@@ -501,8 +506,15 @@ function AppContent() {
               border: `1px solid ${sergasStyles.colors.primary}20`,
               transition: 'transform 0.3s ease, box-shadow 0.3s ease',
               position: 'relative',
-              overflow: 'hidden',
-              opacity: 0.7
+              overflow: 'hidden'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-4px)'
+              e.currentTarget.style.boxShadow = '0 8px 25px rgba(255, 193, 7, 0.25)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = sergasStyles.shadows.card
             }}>
               <div style={{
                 position: 'absolute',
@@ -536,14 +548,14 @@ function AppContent() {
                 Análisis detallados, estadísticas y reportes financieros de tu negocio
               </p>
               <SerGasButton 
-                variant="outline"
-                disabled
+                onClick={() => setCurrentView('reports')}
+                variant="accent"
               >
-                Próximamente
+                Ver Reportes
               </SerGasButton>
             </div>
           </div>
-
+          
           {/* MODIFICAR: Sección de estadísticas rápidas con datos reales */}
           {/* Sección de estadísticas rápidas - SOLO VISIBLE PARA ADMIN */}
         {user?.role === 'admin' && (
