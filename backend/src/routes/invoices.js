@@ -983,30 +983,77 @@ doc.fillColor('#1A1A1A')
   }
 });
 
-// GET /api/invoices/reports/summary - Resumen de facturas
+// GET /api/invoices/reports/summary - Resumen de facturas CON DATOS PARA GRÁFICOS
 router.get('/reports/summary', async (req, res) => {
   try {
-    const { month, year } = req.query;
-    const currentMonth = parseInt(month) || (new Date().getMonth() + 1);
-    const currentYear = parseInt(year) || new Date().getFullYear();
+    const { month, year, startDate, endDate, dateType = 'emission' } = req.query;
+    
+    let dateStart, dateEnd;
+    let period;
+    let previousPeriodStart, previousPeriodEnd;
+    
+    // Determinar si es filtro mensual o por rango de fechas
+    if (startDate && endDate) {
+      // MODO: Filtro por rango de fechas
+      dateStart = startDate;
+      dateEnd = endDate;
+      
+      // Corregir zona horaria para mostrar la fecha correcta
+      const startDateObj = new Date(startDate + 'T00:00:00');
+      const endDateObj = new Date(endDate + 'T00:00:00');
+      
+      period = `${startDateObj.toLocaleDateString('es-ES')} - ${endDateObj.toLocaleDateString('es-ES')}`;
+      
+      // Calcular período anterior (mismo número de días)
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+      
+      const prevEnd = new Date(start);
+      prevEnd.setDate(prevEnd.getDate() - 1);
+      const prevStart = new Date(prevEnd);
+      prevStart.setDate(prevStart.getDate() - daysDiff);
+      
+      previousPeriodStart = prevStart.toISOString().split('T')[0];
+      previousPeriodEnd = prevEnd.toISOString().split('T')[0];
+      
+    } else {
+      // MODO: Filtro mensual (por defecto)
+      const currentMonth = parseInt(month) || (new Date().getMonth() + 1);
+      const currentYear = parseInt(year) || new Date().getFullYear();
+      
+      dateStart = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-01`;
+      dateEnd = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0];
+      period = `${currentMonth}/${currentYear}`;
+      
+      // Calcular mes anterior
+      const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+      const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+      previousPeriodStart = `${previousYear}-${previousMonth.toString().padStart(2, '0')}-01`;
+      previousPeriodEnd = new Date(previousYear, previousMonth, 0).toISOString().split('T')[0];
+    }
 
-    // Fecha del mes actual
-    const startDate = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-01`;
-    const endDate = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0];
-
-    // Calcular mes anterior
-    const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-    const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-    const prevStartDate = `${previousYear}-${previousMonth.toString().padStart(2, '0')}-01`;
-    const prevEndDate = new Date(previousYear, previousMonth, 0).toISOString().split('T')[0];
-
-    // Resumen del mes actual por categoría
-    const summary = await Invoice.findAll({
-      where: {
-        invoice_date: {
-          [Op.between]: [startDate, endDate]
+    console.log('🔍 Período de consulta:', { dateStart, dateEnd, period });
+    console.log('🔍 Tipo de fecha:', dateType); 
+    console.log('🔍 Filtro aplicado:', dateType === 'payment' ? 'paid_date' : 'invoice_date');
+    // Resumen del período actual por categoría
+const whereClause = dateType === 'payment'
+      ? {
+          is_paid: true,
+          paid_date: {
+            [Op.between]: [dateStart, dateEnd]
+          }
         }
-      },
+      : {
+          invoice_date: {
+            [Op.between]: [dateStart, dateEnd]
+          }
+        };
+
+    console.log('🔍 WHERE Clause para summary:', JSON.stringify(whereClause, null, 2));
+
+    const summary = await Invoice.findAll({
+      where: whereClause,
       attributes: [
         'expense_category',
         [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total'],
@@ -1019,51 +1066,56 @@ router.get('/reports/summary', async (req, res) => {
     const totalAmount = summary.reduce((acc, item) => acc + parseFloat(item.dataValues.total), 0);
     const totalInvoices = summary.reduce((acc, item) => acc + parseInt(item.dataValues.count), 0);
 
-
-    
-    // Total del mes anterior
-    const previousMonthData = await Invoice.findOne({
-      where: {
-        invoice_date: {
-          [Op.between]: [prevStartDate, prevEndDate]
+    // Total del período anterior
+   const previousWhereClause = dateType === 'payment'
+      ? {
+          is_paid: true,
+          paid_date: {
+            [Op.between]: [previousPeriodStart, previousPeriodEnd]
+          }
         }
-      },
+      : {
+          invoice_date: {
+            [Op.between]: [previousPeriodStart, previousPeriodEnd]
+          }
+        };
+
+    const previousPeriodData = await Invoice.findOne({
+      where: previousWhereClause,
       attributes: [
         [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total']
       ],
       raw: true
     });
 
-    const previousMonthTotal = previousMonthData?.total 
-      ? parseFloat(previousMonthData.total) 
+    const previousPeriodTotal = previousPeriodData?.total 
+      ? parseFloat(previousPeriodData.total) 
       : 0;
 
     // Calcular diferencia y porcentaje
-    const difference = totalAmount - previousMonthTotal;
-    const percentageChange = previousMonthTotal > 0 
-      ? ((difference / previousMonthTotal) * 100).toFixed(1)
+    const difference = totalAmount - previousPeriodTotal;
+    const percentageChange = previousPeriodTotal > 0 
+      ? ((difference / previousPeriodTotal) * 100).toFixed(1)
       : (totalAmount > 0 ? 100 : 0);
 
     // NUEVOS DATOS PARA GRÁFICOS
-      // TEMPORAL: Ver todas las facturas del mes
-    const allInvoicesDebug = await Invoice.findAll({
-      where: {
-        invoice_date: {
-          [Op.between]: [startDate, endDate]
+    
+    // 1. Estado de facturas (Pagadas vs Pendientes)
+    const statusWhereClause = dateType === 'payment'
+      ? {
+          is_paid: true,
+          paid_date: {
+            [Op.between]: [dateStart, dateEnd]
+          }
         }
-      },
-      attributes: ['id', 'invoice_number', 'is_paid', 'status', 'total_amount'],
-      raw: true
-    });
-    console.log('🔍 TODAS LAS FACTURAS DEL MES:', allInvoicesDebug);
-    // 1. Estado de facturas (Pagadas vs Pendientes) - VERSIÓN MEJORADA
-    // Primero obtenemos todas las facturas del mes
-    const allMonthInvoices = await Invoice.findAll({
-      where: {
-        invoice_date: {
-          [Op.between]: [startDate, endDate]
-        }
-      },
+      : {
+          invoice_date: {
+            [Op.between]: [dateStart, dateEnd]
+          }
+        };
+
+    const allPeriodInvoices = await Invoice.findAll({
+      where: statusWhereClause,
       attributes: ['id', 'is_paid', 'status', 'total_amount'],
       raw: true
     });
@@ -1074,7 +1126,7 @@ router.get('/reports/summary', async (req, res) => {
     let pendingCount = 0;
     let pendingTotal = 0;
 
-    allMonthInvoices.forEach(invoice => {
+    allPeriodInvoices.forEach(invoice => {
       const amount = parseFloat(invoice.total_amount) || 0;
       
       // Considerar pagada si is_paid es true O status es 'pagada'
@@ -1093,13 +1145,22 @@ router.get('/reports/summary', async (req, res) => {
 
     console.log('🔍 Estado calculado - Pagadas:', paidInvoices, 'Pendientes:', pendingInvoices);
 
- // 2. Top 5 proveedores - Consulta simplificada
-    const allInvoices = await Invoice.findAll({
-      where: {
-        invoice_date: {
-          [Op.between]: [startDate, endDate]
+    // 2. Top 5 proveedores
+    const suppliersWhereClause = dateType === 'payment'
+      ? {
+          is_paid: true,
+          paid_date: {
+            [Op.between]: [dateStart, dateEnd]
+          }
         }
-      },
+      : {
+          invoice_date: {
+            [Op.between]: [dateStart, dateEnd]
+          }
+        };
+
+    const allInvoices = await Invoice.findAll({
+      where: suppliersWhereClause,
       include: [{
         model: Supplier,
         as: 'supplier',
@@ -1132,45 +1193,83 @@ router.get('/reports/summary', async (req, res) => {
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
 
-    // 3. Últimos 6 meses para gráfico de tendencia
+    // 3. Últimos 6 períodos para gráfico de tendencia
     const monthlyTrends = [];
-    for (let i = 5; i >= 0; i--) {
-      const trendMonth = currentMonth - i;
-      const trendYear = trendMonth <= 0 ? currentYear - 1 : currentYear;
-      const adjustedMonth = trendMonth <= 0 ? 12 + trendMonth : trendMonth;
-      
-      const trendStartDate = `${trendYear}-${adjustedMonth.toString().padStart(2, '0')}-01`;
-      const trendEndDate = new Date(trendYear, adjustedMonth, 0).toISOString().split('T')[0];
+    
+    if (startDate && endDate) {
+      // Para rango de fechas: mostrar últimos 6 meses completos
+      const today = new Date();
+      for (let i = 5; i >= 0; i--) {
+        const trendMonth = today.getMonth() + 1 - i;
+        const trendYear = trendMonth <= 0 ? today.getFullYear() - 1 : today.getFullYear();
+        const adjustedMonth = trendMonth <= 0 ? 12 + trendMonth : trendMonth;
+        
+        const trendStartDate = `${trendYear}-${adjustedMonth.toString().padStart(2, '0')}-01`;
+        const trendEndDate = new Date(trendYear, adjustedMonth, 0).toISOString().split('T')[0];
 
-      const monthData = await Invoice.findOne({
-        where: {
-          invoice_date: {
-            [Op.between]: [trendStartDate, trendEndDate]
-          }
-        },
-        attributes: [
-          [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total']
-        ],
-        raw: true
-      });
+        const monthData = await Invoice.findOne({
+          where: {
+            invoice_date: {
+              [Op.between]: [trendStartDate, trendEndDate]
+            }
+          },
+          attributes: [
+            [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total']
+          ],
+          raw: true
+        });
 
-      const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        
+        monthlyTrends.push({
+          month: monthNames[adjustedMonth - 1],
+          year: trendYear,
+          total: monthData?.total ? parseFloat(monthData.total) : 0
+        });
+      }
+    } else {
+      // Para filtro mensual: mostrar últimos 6 meses
+      const currentMonth = parseInt(month) || (new Date().getMonth() + 1);
+      const currentYear = parseInt(year) || new Date().getFullYear();
       
-      monthlyTrends.push({
-        month: monthNames[adjustedMonth - 1],
-        year: trendYear,
-        total: monthData?.total ? parseFloat(monthData.total) : 0
-      });
+      for (let i = 5; i >= 0; i--) {
+        const trendMonth = currentMonth - i;
+        const trendYear = trendMonth <= 0 ? currentYear - 1 : currentYear;
+        const adjustedMonth = trendMonth <= 0 ? 12 + trendMonth : trendMonth;
+        
+        const trendStartDate = `${trendYear}-${adjustedMonth.toString().padStart(2, '0')}-01`;
+        const trendEndDate = new Date(trendYear, adjustedMonth, 0).toISOString().split('T')[0];
+
+        const monthData = await Invoice.findOne({
+          where: {
+            invoice_date: {
+              [Op.between]: [trendStartDate, trendEndDate]
+            }
+          },
+          attributes: [
+            [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total']
+          ],
+          raw: true
+        });
+
+        const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        
+        monthlyTrends.push({
+          month: monthNames[adjustedMonth - 1],
+          year: trendYear,
+          total: monthData?.total ? parseFloat(monthData.total) : 0
+        });
+      }
     }
 
     res.json({
       success: true,
       data: {
-        period: `${currentMonth}/${currentYear}`,
+        period: period,
         categories: summary,
         total_amount: totalAmount,
         total_invoices: totalInvoices,
-        previous_month_total: previousMonthTotal,
+        previous_month_total: previousPeriodTotal,
         difference: difference,
         percentage_change: parseFloat(percentageChange),
         // NUEVOS DATOS PARA GRÁFICOS
@@ -1184,7 +1283,7 @@ router.get('/reports/summary', async (req, res) => {
             total: parseFloat(pendingInvoices.total) || 0
           }
         },
-           top_suppliers: topSuppliers,
+        top_suppliers: topSuppliers,
         monthly_trends: monthlyTrends
       }
     });
@@ -1198,4 +1297,148 @@ router.get('/reports/summary', async (req, res) => {
   }
 });
 
+// GET /api/invoices/reports/category-comparison - Comparar categoría entre períodos
+router.get('/reports/category-comparison', async (req, res) => {
+  try {
+    const { 
+      category, 
+      subcategory,
+      period1_start, 
+      period1_end,
+      period2_start,
+      period2_end,
+      dateType = 'emission'
+    } = req.query;
+
+    if (!category || !period1_start || !period1_end || !period2_start || !period2_end) {
+      return res.status(400).json({
+        success: false,
+        message: 'Faltan parámetros requeridos'
+      });
+    }
+
+    // Construir filtro base
+    const baseWhere = {
+      expense_category: category
+    };
+
+    // Agregar subcategoría si existe
+    if (subcategory && subcategory !== 'todas') {
+      baseWhere.expense_subcategory = subcategory;
+    }
+
+    // Consulta para Período 1
+    const period1Where = {
+      ...baseWhere,
+      ...(dateType === 'payment' ? {
+        is_paid: true,
+        paid_date: {
+          [Op.between]: [period1_start, period1_end]
+        }
+      } : {
+        invoice_date: {
+          [Op.between]: [period1_start, period1_end]
+        }
+      })
+    };
+
+    const period1Data = await Invoice.findAll({
+      where: period1Where,
+      attributes: [
+        [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total'],
+        [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count'],
+        [require('sequelize').fn('AVG', require('sequelize').col('total_amount')), 'average']
+      ],
+      raw: true
+    });
+
+    // Consulta para Período 2
+    const period2Where = {
+      ...baseWhere,
+      ...(dateType === 'payment' ? {
+        is_paid: true,
+        paid_date: {
+          [Op.between]: [period2_start, period2_end]
+        }
+      } : {
+        invoice_date: {
+          [Op.between]: [period2_start, period2_end]
+        }
+      })
+    };
+
+    const period2Data = await Invoice.findAll({
+      where: period2Where,
+      attributes: [
+        [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total'],
+        [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count'],
+        [require('sequelize').fn('AVG', require('sequelize').col('total_amount')), 'average']
+      ],
+      raw: true
+    });
+
+    // Extraer valores
+    const p1Total = parseFloat(period1Data[0]?.total) || 0;
+    const p1Count = parseInt(period1Data[0]?.count) || 0;
+    const p1Average = parseFloat(period1Data[0]?.average) || 0;
+
+    const p2Total = parseFloat(period2Data[0]?.total) || 0;
+    const p2Count = parseInt(period2Data[0]?.count) || 0;
+    const p2Average = parseFloat(period2Data[0]?.average) || 0;
+
+    // Calcular diferencias y porcentajes
+    const totalDifference = p2Total - p1Total;
+    const totalPercentage = p1Total > 0 ? ((totalDifference / p1Total) * 100).toFixed(1) : (p2Total > 0 ? 100 : 0);
+
+    const countDifference = p2Count - p1Count;
+    const countPercentage = p1Count > 0 ? ((countDifference / p1Count) * 100).toFixed(1) : (p2Count > 0 ? 100 : 0);
+
+    const avgDifference = p2Average - p1Average;
+    const avgPercentage = p1Average > 0 ? ((avgDifference / p1Average) * 100).toFixed(1) : (p2Average > 0 ? 100 : 0);
+
+    // Formatear fechas para el período
+    const formatPeriod = (start, end) => {
+      const startDate = new Date(start + 'T00:00:00');
+      const endDate = new Date(end + 'T00:00:00');
+      return `${startDate.toLocaleDateString('es-ES')} - ${endDate.toLocaleDateString('es-ES')}`;
+    };
+
+    res.json({
+      success: true,
+      data: {
+        category,
+        subcategory: subcategory || 'Todas',
+        period1: {
+          label: formatPeriod(period1_start, period1_end),
+          total: p1Total,
+          count: p1Count,
+          average: p1Average
+        },
+        period2: {
+          label: formatPeriod(period2_start, period2_end),
+          total: p2Total,
+          count: p2Count,
+          average: p2Average
+        },
+        comparison: {
+          total_difference: totalDifference,
+          total_percentage: parseFloat(totalPercentage),
+          count_difference: countDifference,
+          count_percentage: parseFloat(countPercentage),
+          average_difference: avgDifference,
+          average_percentage: parseFloat(avgPercentage)
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error en comparación de categorías:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
 module.exports = router;
+
