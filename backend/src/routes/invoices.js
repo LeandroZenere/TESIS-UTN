@@ -1000,7 +1000,7 @@ router.get('/reports/summary', async (req, res) => {
     const prevStartDate = `${previousYear}-${previousMonth.toString().padStart(2, '0')}-01`;
     const prevEndDate = new Date(previousYear, previousMonth, 0).toISOString().split('T')[0];
 
-    // Resumen del mes actual
+    // Resumen del mes actual por categoría
     const summary = await Invoice.findAll({
       where: {
         invoice_date: {
@@ -1019,28 +1019,149 @@ router.get('/reports/summary', async (req, res) => {
     const totalAmount = summary.reduce((acc, item) => acc + parseFloat(item.dataValues.total), 0);
     const totalInvoices = summary.reduce((acc, item) => acc + parseInt(item.dataValues.count), 0);
 
-    // Total del mes anterior
-        const previousMonthData = await Invoice.findOne({
-          where: {
-            invoice_date: {
-              [Op.between]: [prevStartDate, prevEndDate]
-            }
-          },
-          attributes: [
-            [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total']
-          ],
-          raw: true
-        });
 
-        const previousMonthTotal = previousMonthData?.total 
-          ? parseFloat(previousMonthData.total) 
-          : 0;
+    
+    // Total del mes anterior
+    const previousMonthData = await Invoice.findOne({
+      where: {
+        invoice_date: {
+          [Op.between]: [prevStartDate, prevEndDate]
+        }
+      },
+      attributes: [
+        [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total']
+      ],
+      raw: true
+    });
+
+    const previousMonthTotal = previousMonthData?.total 
+      ? parseFloat(previousMonthData.total) 
+      : 0;
 
     // Calcular diferencia y porcentaje
     const difference = totalAmount - previousMonthTotal;
     const percentageChange = previousMonthTotal > 0 
       ? ((difference / previousMonthTotal) * 100).toFixed(1)
       : (totalAmount > 0 ? 100 : 0);
+
+    // NUEVOS DATOS PARA GRÁFICOS
+      // TEMPORAL: Ver todas las facturas del mes
+    const allInvoicesDebug = await Invoice.findAll({
+      where: {
+        invoice_date: {
+          [Op.between]: [startDate, endDate]
+        }
+      },
+      attributes: ['id', 'invoice_number', 'is_paid', 'status', 'total_amount'],
+      raw: true
+    });
+    console.log('🔍 TODAS LAS FACTURAS DEL MES:', allInvoicesDebug);
+    // 1. Estado de facturas (Pagadas vs Pendientes) - VERSIÓN MEJORADA
+    // Primero obtenemos todas las facturas del mes
+    const allMonthInvoices = await Invoice.findAll({
+      where: {
+        invoice_date: {
+          [Op.between]: [startDate, endDate]
+        }
+      },
+      attributes: ['id', 'is_paid', 'status', 'total_amount'],
+      raw: true
+    });
+
+    // Clasificar manualmente en JavaScript para manejar NULL
+    let paidCount = 0;
+    let paidTotal = 0;
+    let pendingCount = 0;
+    let pendingTotal = 0;
+
+    allMonthInvoices.forEach(invoice => {
+      const amount = parseFloat(invoice.total_amount) || 0;
+      
+      // Considerar pagada si is_paid es true O status es 'pagada'
+      if (invoice.is_paid === true || invoice.is_paid === 1 || invoice.status === 'pagada') {
+        paidCount++;
+        paidTotal += amount;
+      } else {
+        // Todo lo demás (false, null, 'pendiente', etc.) es pendiente
+        pendingCount++;
+        pendingTotal += amount;
+      }
+    });
+
+    const paidInvoices = { count: paidCount, total: paidTotal };
+    const pendingInvoices = { count: pendingCount, total: pendingTotal };
+
+    console.log('🔍 Estado calculado - Pagadas:', paidInvoices, 'Pendientes:', pendingInvoices);
+
+ // 2. Top 5 proveedores - Consulta simplificada
+    const allInvoices = await Invoice.findAll({
+      where: {
+        invoice_date: {
+          [Op.between]: [startDate, endDate]
+        }
+      },
+      include: [{
+        model: Supplier,
+        as: 'supplier',
+        attributes: ['business_name']
+      }],
+      attributes: ['supplier_id', 'total_amount']
+    });
+
+    // Agrupar manualmente en JavaScript
+    const supplierTotals = {};
+    allInvoices.forEach(invoice => {
+      const supplierId = invoice.supplier_id;
+      const supplierName = invoice.supplier?.business_name || 'Desconocido';
+      const amount = parseFloat(invoice.total_amount);
+      
+      if (!supplierTotals[supplierId]) {
+        supplierTotals[supplierId] = {
+          name: supplierName,
+          total: 0,
+          count: 0
+        };
+      }
+      
+      supplierTotals[supplierId].total += amount;
+      supplierTotals[supplierId].count += 1;
+    });
+
+    // Convertir a array y ordenar
+    const topSuppliers = Object.values(supplierTotals)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+
+    // 3. Últimos 6 meses para gráfico de tendencia
+    const monthlyTrends = [];
+    for (let i = 5; i >= 0; i--) {
+      const trendMonth = currentMonth - i;
+      const trendYear = trendMonth <= 0 ? currentYear - 1 : currentYear;
+      const adjustedMonth = trendMonth <= 0 ? 12 + trendMonth : trendMonth;
+      
+      const trendStartDate = `${trendYear}-${adjustedMonth.toString().padStart(2, '0')}-01`;
+      const trendEndDate = new Date(trendYear, adjustedMonth, 0).toISOString().split('T')[0];
+
+      const monthData = await Invoice.findOne({
+        where: {
+          invoice_date: {
+            [Op.between]: [trendStartDate, trendEndDate]
+          }
+        },
+        attributes: [
+          [require('sequelize').fn('SUM', require('sequelize').col('total_amount')), 'total']
+        ],
+        raw: true
+      });
+
+      const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      
+      monthlyTrends.push({
+        month: monthNames[adjustedMonth - 1],
+        year: trendYear,
+        total: monthData?.total ? parseFloat(monthData.total) : 0
+      });
+    }
 
     res.json({
       success: true,
@@ -1051,7 +1172,20 @@ router.get('/reports/summary', async (req, res) => {
         total_invoices: totalInvoices,
         previous_month_total: previousMonthTotal,
         difference: difference,
-        percentage_change: parseFloat(percentageChange)
+        percentage_change: parseFloat(percentageChange),
+        // NUEVOS DATOS PARA GRÁFICOS
+        invoice_status: {
+          paid: {
+            count: parseInt(paidInvoices.count) || 0,
+            total: parseFloat(paidInvoices.total) || 0
+          },
+          pending: {
+            count: parseInt(pendingInvoices.count) || 0,
+            total: parseFloat(pendingInvoices.total) || 0
+          }
+        },
+           top_suppliers: topSuppliers,
+        monthly_trends: monthlyTrends
       }
     });
 

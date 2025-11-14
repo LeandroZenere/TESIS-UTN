@@ -1,5 +1,30 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend
+} from 'chart.js'
+
+import { Bar, Doughnut, Line } from 'react-chartjs-2'
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend
+)
 
 export default function Reports({ onBack }) {
   const { token } = useAuth()
@@ -54,9 +79,12 @@ export default function Reports({ onBack }) {
       })
       
       const data = await response.json()
+      console.log('📊 DATOS RECIBIDOS DEL BACKEND:', data)
       
       if (data.success) {
         setReportData(data.data)
+        console.log('📊 invoice_status:', data.data.invoice_status)
+        console.log('📊 total_invoices:', data.data.total_invoices)
         setError('')
       } else {
         setError(`Error del servidor: ${data.message}`)
@@ -580,6 +608,323 @@ export default function Reports({ onBack }) {
                   )}
                   </div>
                 </div>
+
+            {/* SECCIÓN DE GRÁFICOS */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
+              gap: '24px',
+              marginBottom: '24px'
+            }}>
+              
+              {/* Gráfico de Torta - Gastos por Categoría */}
+              <div style={{
+                background: sergasStyles.colors.white,
+                borderRadius: '12px',
+                padding: '24px',
+                boxShadow: sergasStyles.shadows.card,
+                border: `1px solid ${sergasStyles.colors.primary}20`
+              }}>
+                <h3 style={{ 
+                  color: sergasStyles.colors.dark, 
+                  marginBottom: '20px',
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  textAlign: 'center'
+                }}>
+                  📊 Distribución por Categoría
+                </h3>
+                  {reportData.categories.length > 0 ? (
+                  <div style={{ maxWidth: '320px', margin: '0 auto' }}>
+                    <Doughnut
+                    data={{
+                      labels: reportData.categories.map(cat => cat.expense_category || 'Sin categoría'),
+                      datasets: [{
+                        data: reportData.categories.map(cat => {
+                          const total = cat.dataValues?.total || cat.total || 0;
+                          return parseFloat(total);
+                        }),
+                        backgroundColor: [
+                          '#FFC107',
+                          '#FF8C00',
+                          '#E53E3E',
+                          '#22C55E',
+                          '#3B82F6',
+                          '#8B5CF6',
+                          '#EC4899',
+                          '#F59E0B'
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: true,
+                      plugins: {
+                        legend: {
+                          position: 'bottom',
+                          labels: {
+                            padding: 15,
+                            font: { size: 12 }
+                          }
+                        },
+                        tooltip: {
+                          callbacks: {
+                            label: function(context) {
+                              const value = context.parsed;
+                              const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                              const percentage = ((value / total) * 100).toFixed(1);
+                              return `${context.label}: $${value.toLocaleString('es-ES', { minimumFractionDigits: 2 })} (${percentage}%)`;
+                            }
+                          }
+                        }
+                      }
+                    }}
+                  />
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '40px', color: sergasStyles.colors.gray }}>
+                    <p>No hay datos para mostrar</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Gráfico de Dona - Estado de Facturas */}
+              <div style={{
+                background: sergasStyles.colors.white,
+                borderRadius: '12px',
+                padding: '24px',
+                boxShadow: sergasStyles.shadows.card,
+                border: `1px solid ${sergasStyles.colors.primary}20`
+              }}>
+                <h3 style={{ 
+                  color: sergasStyles.colors.dark, 
+                  marginBottom: '20px',
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  textAlign: 'center'
+                }}>
+                  💰 Estado de Facturas
+                </h3>
+                {reportData.invoice_status && reportData.total_invoices > 0 ? (
+                  <div>
+                    <div style={{ maxWidth: '300px', margin: '0 auto' }}>
+                      <Doughnut
+                        data={{
+                          labels: ['Pagadas', 'Pendientes'],
+                          datasets: [{
+                            data: [
+                              reportData.invoice_status.paid.total || 0,
+                              reportData.invoice_status.pending.total || 0
+                            ],
+                            backgroundColor: ['#22C55E', '#F59E0B'],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                          }]
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: true,
+                          aspectRatio: 1.2,
+                          plugins: {
+                            legend: {
+                              position: 'bottom',
+                              labels: {
+                                padding: 15,
+                                font: { size: 12 }
+                              }
+                            },
+                            tooltip: {
+                              callbacks: {
+                                label: function(context) {
+                                  const value = context.parsed;
+                                  const count = context.dataIndex === 0 
+                                    ? reportData.invoice_status.paid.count 
+                                    : reportData.invoice_status.pending.count;
+                                  return `${context.label}: $${value.toLocaleString('es-ES', { minimumFractionDigits: 2 })} (${count} facturas)`;
+                                }
+                              }
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                    <div style={{ 
+                      marginTop: '20px', 
+                      display: 'grid', 
+                      gridTemplateColumns: '1fr 1fr', 
+                      gap: '12px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ padding: '12px', background: '#22C55E15', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '12px', color: sergasStyles.colors.gray, marginBottom: '4px' }}>Pagadas</div>
+                        <div style={{ fontSize: '20px', fontWeight: '700', color: '#22C55E' }}>
+                          {reportData.invoice_status.paid.count || 0}
+                        </div>
+                        <div style={{ fontSize: '12px', color: sergasStyles.colors.gray, marginTop: '4px' }}>
+                          ${(reportData.invoice_status.paid.total || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                      <div style={{ padding: '12px', background: '#F59E0B15', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '12px', color: sergasStyles.colors.gray, marginBottom: '4px' }}>Pendientes</div>
+                        <div style={{ fontSize: '20px', fontWeight: '700', color: '#F59E0B' }}>
+                          {reportData.invoice_status.pending.count || 0}
+                        </div>
+                        <div style={{ fontSize: '12px', color: sergasStyles.colors.gray, marginTop: '4px' }}>
+                          ${(reportData.invoice_status.pending.total || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '40px', color: sergasStyles.colors.gray }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.5 }}>📊</div>
+                    <p>No hay facturas en este período</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Gráfico de Línea - Tendencia de 6 meses (Ancho completo) */}
+            <div style={{
+              background: sergasStyles.colors.white,
+              borderRadius: '12px',
+              padding: '32px',
+              boxShadow: sergasStyles.shadows.card,
+              border: `1px solid ${sergasStyles.colors.primary}20`,
+              marginBottom: '24px'
+            }}>
+              <h3 style={{ 
+                color: sergasStyles.colors.dark, 
+                marginBottom: '24px',
+                fontSize: '20px',
+                fontWeight: '700'
+              }}>
+                📈 Tendencia de Gastos - Últimos 6 Meses
+              </h3>
+              {reportData.monthly_trends && reportData.monthly_trends.length > 0 ? (
+                <Line
+                  data={{
+                    labels: reportData.monthly_trends.map(m => `${m.month} ${m.year}`),
+                    datasets: [{
+                      label: 'Gastos Mensuales',
+                      data: reportData.monthly_trends.map(m => m.total),
+                      borderColor: '#FFC107',
+                      backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                      tension: 0.4,
+                      fill: true,
+                      pointRadius: 5,
+                      pointHoverRadius: 7,
+                      pointBackgroundColor: '#FFC107',
+                      pointBorderColor: '#fff',
+                      pointBorderWidth: 2
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 4,
+                    plugins: {
+                      legend: {
+                        display: false
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context) {
+                            return `Gastos: $${context.parsed.y.toLocaleString('es-ES', { minimumFractionDigits: 2 })}`;
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        ticks: {
+                          callback: function(value) {
+                            return '$' + value.toLocaleString('es-ES');
+                          }
+                        }
+                      }
+                    }
+                  }}
+                />
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px', color: sergasStyles.colors.gray }}>
+                  <p>No hay datos suficientes para mostrar la tendencia</p>
+                </div>
+              )}
+            </div>
+
+            {/* Top 5 Proveedores */}
+            {reportData.top_suppliers && reportData.top_suppliers.length > 0 && (
+              <div style={{
+                background: sergasStyles.colors.white,
+                borderRadius: '12px',
+                padding: '32px',
+                boxShadow: sergasStyles.shadows.card,
+                border: `1px solid ${sergasStyles.colors.primary}20`,
+                marginBottom: '24px'
+              }}>
+                <h3 style={{ 
+                  color: sergasStyles.colors.dark, 
+                  marginBottom: '24px',
+                  fontSize: '20px',
+                  fontWeight: '700'
+                }}>
+                  🏆 Top 5 Proveedores del Mes
+                </h3>
+                <Bar
+                  data={{
+                    labels: reportData.top_suppliers.map(s => s.name),
+                    datasets: [{
+                      label: 'Total Gastado',
+                      data: reportData.top_suppliers.map(s => s.total),
+                      backgroundColor: [
+                        '#FFC107',
+                        '#FF8C00',
+                        '#E53E3E',
+                        '#F59E0B',
+                        '#EF4444'
+                      ],
+                      borderRadius: 8
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 4,
+                    indexAxis: 'x',
+                    plugins: {
+                      legend: {
+                        display: false
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context) {
+                            const supplier = reportData.top_suppliers[context.dataIndex];
+                            return [
+                              `Total: $${context.parsed.y.toLocaleString('es-ES', { minimumFractionDigits: 2 })}`,
+                              `Facturas: ${supplier.count}`
+                            ];
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        ticks: {
+                          callback: function(value) {
+                            return '$' + value.toLocaleString('es-ES');
+                          }
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            )}
 
             {/* Detalle por Categorías */}
             <div style={{
