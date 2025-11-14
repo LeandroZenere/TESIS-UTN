@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 
 export default function Suppliers({ onBack }) {
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [supplierToDelete, setSupplierToDelete] = useState(null)
 
   // Estilos SerGas
   const sergasStyles = {
@@ -224,6 +226,41 @@ export default function Suppliers({ onBack }) {
     })
     setEditingSupplier(null)
     setError('')
+  }
+
+  const handleDelete = async () => {
+    if (!supplierToDelete) return
+
+    try {
+      setLoading(true)
+      
+      const response = await fetch(`http://localhost:3001/api/suppliers/${supplierToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        await loadSuppliers()
+        setShowDeleteModal(false)
+        setSupplierToDelete(null)
+        setError('')
+      } else {
+        setError(data.message || 'Error al eliminar proveedor')
+        setShowDeleteModal(false)
+        setSupplierToDelete(null)
+      }
+    } catch (error) {
+      setError(`Error de conexión: ${error.message}`)
+      setShowDeleteModal(false)
+      setSupplierToDelete(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const filteredSuppliers = suppliers.filter(supplier =>
@@ -1096,6 +1133,7 @@ export default function Suppliers({ onBack }) {
                           </span>
                         </td>
                         <td style={{ padding: '16px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                           <SerGasButton
                             onClick={() => handleEdit(supplier)}
                             variant="accent"
@@ -1103,7 +1141,21 @@ export default function Suppliers({ onBack }) {
                           >
                             Editar
                           </SerGasButton>
-                        </td>
+                          
+                          {user?.role === 'admin' && (
+                            <SerGasButton
+                              onClick={() => {
+                                setSupplierToDelete(supplier)
+                                setShowDeleteModal(true)
+                              }}
+                              variant="error"
+                              size="small"
+                            >
+                              Eliminar
+                            </SerGasButton>
+                          )}
+                        </div>
+                      </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1121,6 +1173,114 @@ export default function Suppliers({ onBack }) {
           100% { transform: rotate(360deg); }
         }
       `}</style>
+
+    {showDeleteModal && supplierToDelete && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{
+            background: sergasStyles.colors.white,
+            borderRadius: '16px',
+            padding: '32px',
+            boxShadow: sergasStyles.shadows.modal,
+            width: '500px',
+            maxWidth: '90vw',
+            border: `2px solid ${sergasStyles.colors.error}40`
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{ 
+                fontSize: '48px', 
+                marginBottom: '16px',
+                color: sergasStyles.colors.error
+              }}>
+                ⚠️
+              </div>
+              <h3 style={{ 
+                color: sergasStyles.colors.dark, 
+                marginBottom: '12px',
+                fontSize: '24px',
+                fontWeight: '700'
+              }}>
+                Confirmar Eliminación
+              </h3>
+              <p style={{ 
+                color: sergasStyles.colors.gray,
+                fontSize: '14px',
+                lineHeight: '1.6'
+              }}>
+                Esta acción no se puede deshacer
+              </p>
+            </div>
+            
+            <div style={{ 
+              background: `linear-gradient(135deg, ${sergasStyles.colors.lightGray} 0%, ${sergasStyles.colors.white} 100%)`,
+              padding: '20px',
+              borderRadius: '12px',
+              marginBottom: '24px',
+              border: `1px solid ${sergasStyles.colors.error}20`
+            }}>
+              <p style={{ margin: '0 0 8px 0', color: sergasStyles.colors.gray, fontSize: '14px' }}>
+                <strong style={{ color: sergasStyles.colors.dark }}>Proveedor:</strong>
+              </p>
+              <p style={{ margin: '0 0 12px 0', color: sergasStyles.colors.dark, fontSize: '16px', fontWeight: '600' }}>
+                {supplierToDelete.business_name}
+              </p>
+              <p style={{ margin: '0', color: sergasStyles.colors.gray, fontSize: '14px' }}>
+                <strong style={{ color: sergasStyles.colors.dark }}>CUIT:</strong> {supplierToDelete.cuit}
+              </p>
+            </div>
+
+            <div style={{
+              background: `linear-gradient(135deg, ${sergasStyles.colors.warning}15 0%, ${sergasStyles.colors.warning}25 100%)`,
+              padding: '16px',
+              borderRadius: '8px',
+              marginBottom: '24px',
+              border: `1px solid ${sergasStyles.colors.warning}40`
+            }}>
+              <p style={{ 
+                margin: 0, 
+                color: sergasStyles.colors.dark,
+                fontSize: '13px',
+                lineHeight: '1.5'
+              }}>
+                <strong>Nota:</strong> Solo se puede eliminar si no tiene facturas asociadas.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <SerGasButton
+                onClick={() => {
+                  setShowDeleteModal(false)
+                  setSupplierToDelete(null)
+                }}
+                variant="ghost"
+                size="large"
+              >
+                Cancelar
+              </SerGasButton>
+              
+              <SerGasButton
+                onClick={handleDelete}
+                disabled={loading}
+                variant="error"
+                size="large"
+              >
+                {loading ? 'Eliminando...' : 'Eliminar Proveedor'}
+              </SerGasButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

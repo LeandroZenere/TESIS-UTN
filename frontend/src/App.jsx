@@ -3,10 +3,13 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './components/Login'
 import Suppliers from './components/Suppliers'
 import Invoices from './components/Invoices'
+import Settings from './components/Settings'
+import ExpenseCategories from './components/ExpenseCategories'
 
 function AppContent() {
   const { user, loading, logout, token } = useAuth()
   const [currentView, setCurrentView] = useState('dashboard')
+  
   
   // AGREGAR: Estados para estadísticas
   const [dashboardStats, setDashboardStats] = useState({
@@ -221,6 +224,17 @@ function AppContent() {
     return <Invoices onBack={() => setCurrentView('dashboard')} />
   }
 
+  if (currentView === 'settings') {
+    return <Settings 
+      onBack={() => setCurrentView('dashboard')} 
+      onNavigate={(view) => setCurrentView(view)}
+    />
+  }
+
+  if (currentView === 'categories') {
+    return <ExpenseCategories onBack={() => setCurrentView('settings')} />
+  }
+
   return (
     <div style={{ 
       minHeight: '100vh', 
@@ -310,6 +324,17 @@ function AppContent() {
               Bienvenido, {user.full_name}
             </span>
           </div>
+          
+        {/* Botón Configuración - Solo para Admin */}
+          {user?.role === 'admin' && currentView === 'dashboard' && (
+            <SerGasButton 
+              onClick={() => setCurrentView('settings')} 
+              variant="secondary"
+              size="small"
+            >
+              ⚙️
+            </SerGasButton>
+          )}
           
           <SerGasButton 
             onClick={logout} 
@@ -520,6 +545,8 @@ function AppContent() {
           </div>
 
           {/* MODIFICAR: Sección de estadísticas rápidas con datos reales */}
+          {/* Sección de estadísticas rápidas - SOLO VISIBLE PARA ADMIN */}
+        {user?.role === 'admin' && (
           <div style={{
             marginTop: '48px',
             background: sergasStyles.colors.white,
@@ -651,8 +678,9 @@ function AppContent() {
               </div>
             )}
           </div>
-        </div>
-      </main>
+        )}
+      </div>
+  </main>
 
       {/* Animaciones CSS */}
       <style>{`
@@ -672,5 +700,7 @@ function App() {
     </AuthProvider>
   )
 }
+
+
 
 export default App

@@ -1,6 +1,6 @@
 const express = require('express');
 const { Invoice, Supplier, User } = require('../models');
-const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { authenticateToken, requireAdmin, canEditInvoice } = require('../middleware/auth');
 const { Op } = require('sequelize');
 const upload = require('../middleware/upload');
 const path = require('path');
@@ -308,8 +308,8 @@ router.post('/', (req, res, next) => {
   }
 });
 
-// PUT /api/invoices/:id - Actualizar factura (con factura original)
-router.put('/:id', upload.fields([
+// PUT /api/invoices/:id - Actualizar factura (con validación de permisos mediante middleware)
+router.put('/:id', canEditInvoice, upload.fields([
   { name: 'original_invoice', maxCount: 1 }
 ]), async (req, res) => {
   try {
@@ -322,20 +322,8 @@ router.put('/:id', upload.fields([
       });
     }
 
-    // Solo el creador o un admin puede editar (y solo si no está pagada)
-    if (req.user.role !== 'admin' && req.user.id !== invoice.created_by) {
-      return res.status(403).json({
-        success: false,
-        message: 'Sin permisos para editar esta factura'
-      });
-    }
-
-    if (invoice.is_paid) {
-      return res.status(400).json({
-        success: false,
-        message: 'No se puede editar una factura que ya está pagada'
-      });
-    }
+    // Las validaciones de permisos ya las hizo el middleware canEditInvoice
+    // No es necesario validar aquí
 
     // Manejo del archivo original en edición
     let originalInvoiceFile = invoice.original_invoice; // Mantener el existente por defecto
@@ -389,7 +377,7 @@ router.put('/:id', upload.fields([
       expense_category: expense_category || invoice.expense_category,
       expense_subcategory: expense_subcategory || invoice.expense_subcategory,
       notes: notes !== undefined ? notes : invoice.notes,
-      original_invoice: originalInvoiceFile // Actualizar archivo original
+      original_invoice: originalInvoiceFile
     });
 
     // Recalcular total
@@ -994,7 +982,6 @@ doc.fillColor('#1A1A1A')
     });
   }
 });
-
 
 // GET /api/invoices/reports/summary - Resumen de facturas
 router.get('/reports/summary', async (req, res) => {

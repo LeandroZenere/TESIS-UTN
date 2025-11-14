@@ -17,6 +17,30 @@ export default function Invoices({ onBack }) {
   const [paymentFile, setPaymentFile] = useState(null)
   const [originalInvoiceFile, setOriginalInvoiceFile] = useState(null)
   const [errorTimeout, setErrorTimeout] = useState(null)
+  const getLocalDateString = () => { //OBTENER FECHAS
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+ const formatDateOnly = (dateString) => { //Formatear fechas DATEONLY
+    if (!dateString) return 'N/A';
+    if (typeof dateString !== 'string') return 'N/A';
+    
+    const parts = dateString.split('-');
+    if (parts.length !== 3) return 'N/A';
+    
+    const [year, month, day] = parts;
+    const date = new Date(year, month - 1, day);
+    
+    return date.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  };
+
 
   // Estilos SerGas
   const sergasStyles = {
@@ -61,7 +85,7 @@ export default function Invoices({ onBack }) {
     numero_factura: '',
     invoice_date: '',
     due_date: '',
-    load_date: new Date().toISOString().split('T')[0],
+    load_date: getLocalDateString(),
     payment_type: 'cuenta_corriente',
     tax_details: [],
     no_gravado: '',
@@ -247,7 +271,7 @@ export default function Invoices({ onBack }) {
       expense_category: '',
       expense_subcategory: '',
       notes: '',
-      load_date: new Date().toISOString().split('T')[0],
+      load_date: getLocalDateString()
     })
     
     setEditingInvoice(null)
@@ -337,7 +361,7 @@ export default function Invoices({ onBack }) {
       formDataToSend.append('expense_category', formData.expense_category)
       formDataToSend.append('expense_subcategory', formData.expense_subcategory || '')
       formDataToSend.append('notes', formData.notes || '')
-      formDataToSend.append('load_date', new Date().toISOString().split('T')[0])
+      formDataToSend.append('load_date', getLocalDateString()) 
 
       
       // Agregar archivo original si existe
@@ -587,7 +611,7 @@ const handleViewOriginalInvoice = async (invoice) => {
       numero_factura: numeroFactura.replace(/^0+/, '') || numeroFactura,
       invoice_date: invoice.invoice_date,
       due_date: invoice.due_date || '',
-      load_date: invoice.load_date || new Date().toISOString().split('T')[0],
+      load_date: invoice.load_date || getLocalDateString(),
       payment_type: invoice.payment_type,
       tax_details: reconstructedTaxDetails,
       no_gravado: invoice.otros_impuestos || '',
@@ -904,7 +928,7 @@ const handleViewOriginalInvoice = async (invoice) => {
                       <strong style={{ color: sergasStyles.colors.dark }}>Proveedor:</strong> {editingInvoice.supplier?.business_name}
                     </div>
                     <div style={{ color: sergasStyles.colors.gray }}>
-                      <strong style={{ color: sergasStyles.colors.dark }}>Fecha de Emisión:</strong> {new Date(editingInvoice.invoice_date).toLocaleDateString('es-ES')}
+                      <strong style={{ color: sergasStyles.colors.dark }}>Fecha de Emisión:</strong> {formatDateOnly(editingInvoice.invoice_date)}
                     </div>
                     <div style={{ color: sergasStyles.colors.gray }}>
                       <strong style={{ color: sergasStyles.colors.dark }}>Total:</strong> 
@@ -928,7 +952,7 @@ const handleViewOriginalInvoice = async (invoice) => {
                       </span>
                     </div>
                     <div style={{ color: sergasStyles.colors.gray }}>
-                      <strong style={{ color: sergasStyles.colors.dark }}>Fecha de Pago:</strong> {editingInvoice.paid_date ? new Date(editingInvoice.paid_date).toLocaleDateString('es-ES') : 'N/A'}
+                      <strong style={{ color: sergasStyles.colors.dark }}>Fecha de Pago:</strong> {formatDateOnly(editingInvoice.paid_date)}
                     </div>
                   </div>
                 </div>
@@ -2156,17 +2180,17 @@ const handleViewOriginalInvoice = async (invoice) => {
                             CUIT: {invoice.supplier.cuit}
                           </div>
                         </td>
-                        <td style={{ padding: '16px' }}>
+                                                <td style={{ padding: '16px' }}>
                           <div style={{ fontSize: '12px', color: sergasStyles.colors.gray, marginBottom: '2px' }}>
-                            Emisión: {new Date(invoice.invoice_date).toLocaleDateString('es-ES')}
+                            Emisión: {formatDateOnly(invoice.invoice_date)}
                           </div>
                           {invoice.due_date && (
                             <div style={{ fontSize: '12px', color: sergasStyles.colors.gray, marginBottom: '2px' }}>
-                              Vto: {new Date(invoice.due_date).toLocaleDateString('es-ES')}
+                              Vto: {formatDateOnly(invoice.due_date)}
                             </div>
                           )}
                           <div style={{ fontSize: '12px', color: sergasStyles.colors.gray }}>
-                            Carga: {invoice.load_date ? new Date(invoice.load_date).toLocaleDateString('es-ES') : 'N/A'}
+                            Carga: {formatDateOnly(invoice.load_date)}
                           </div>
                         </td>
                         <td style={{ padding: '16px' }}>
@@ -2206,7 +2230,7 @@ const handleViewOriginalInvoice = async (invoice) => {
                               color: sergasStyles.colors.gray,
                               marginTop: '6px'
                             }}>
-                              {new Date(invoice.paid_date).toLocaleDateString('es-ES')}
+                              {formatDateOnly(invoice.paid_date)}
                             </div>
                           )}
                         </td>                    

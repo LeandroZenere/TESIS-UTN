@@ -1,6 +1,6 @@
 const express = require('express');
 const { Supplier } = require('../models');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, canDeleteSuppliers } = require('../middleware/auth');
 const { Op } = require('sequelize');
 
 const router = express.Router();
@@ -211,6 +211,49 @@ router.put('/:id', async (req, res) => {
 
   } catch (error) {
     console.error('Error actualizando proveedor:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// DELETE /api/suppliers/:id - Eliminar proveedor (solo admin)
+router.delete('/:id', canDeleteSuppliers, async (req, res) => {
+  try {
+    const supplier = await Supplier.findByPk(req.params.id);
+    
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Proveedor no encontrado'
+      });
+    }
+
+    // Verificar si tiene facturas asociadas
+    const { Invoice } = require('../models');
+    const invoiceCount = await Invoice.count({
+      where: { supplier_id: supplier.id }
+    });
+
+    if (invoiceCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `No se puede eliminar el proveedor porque tiene ${invoiceCount} factura(s) asociada(s). Primero debe eliminar o reasignar las facturas.`
+      });
+    }
+
+    // Soft delete (marcar como inactivo)
+    await supplier.update({ is_active: false });
+
+    res.json({
+      success: true,
+      message: 'Proveedor eliminado exitosamente',
+      data: { supplier }
+    });
+
+  } catch (error) {
+    console.error('Error eliminando proveedor:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'

@@ -2,6 +2,7 @@ const { sequelize } = require('./database');
 const User = require('./User');
 const Supplier = require('./Supplier');
 const Invoice = require('./Invoice');
+const ExpenseCategory = require('./ExpenseCategory');
 
 // Definir las relaciones entre modelos
 // Un proveedor puede tener muchas facturas
@@ -72,6 +73,7 @@ module.exports = {
   User,
   Supplier,
   Invoice,
+  ExpenseCategory,
   syncAllModels,
   createDefaultAdmin
 };

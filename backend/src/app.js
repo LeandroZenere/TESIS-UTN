@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { syncAllModels } = require('./models');
+const expenseCategoriesRoutes = require('./routes/expenseCategories');
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/expense-categories', expenseCategoriesRoutes);
 
 // Ruta principal
 app.get('/', (req, res) => {
