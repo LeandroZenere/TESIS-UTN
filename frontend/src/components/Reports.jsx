@@ -268,7 +268,7 @@ const exportToExcel = () => {
         ['REPORTE FINANCIERO - SERGAS'],
         ['Sistema de Gestión de Facturas'],
         [],
-        ['Período', `${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`],
+        ['Período', reportData.period],
         ['Fecha de generación', new Date().toLocaleDateString('es-ES')],
         [],
         ['RESUMEN DEL MES'],
@@ -320,7 +320,7 @@ const exportToExcel = () => {
       // ==================== HOJA 2: DETALLE POR CATEGORÍAS ====================
       const categoriasData = [
         ['GASTOS POR CATEGORÍA'],
-        [`Período: ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`],
+        [`Período: ${reportData.period}`],
         [],
         ['Categoría', 'Cantidad Facturas', 'Total', 'Porcentaje']
       ]
@@ -395,7 +395,7 @@ const exportToExcel = () => {
       // ==================== HOJA 3: TOP PROVEEDORES ====================
       const proveedoresData = [
         ['TOP PROVEEDORES DEL MES'],
-        [`Período: ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`],
+        [`Período: ${reportData.period}`],
         [],
         ['Posición', 'Proveedor', 'Cantidad Facturas', 'Total Gastado']
       ]

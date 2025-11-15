@@ -17,6 +17,16 @@ export default function Invoices({ onBack }) {
   const [paymentFile, setPaymentFile] = useState(null)
   const [originalInvoiceFile, setOriginalInvoiceFile] = useState(null)
   const [errorTimeout, setErrorTimeout] = useState(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [invoiceToDelete, setInvoiceToDelete] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [pagination, setPagination] = useState({
+    total: 0,
+    totalPages: 0,
+    hasNextPage: false,
+    hasPrevPage: false
+  })
   const getLocalDateString = () => { //OBTENER FECHAS
   const now = new Date();
   const year = now.getFullYear();
@@ -40,7 +50,6 @@ export default function Invoices({ onBack }) {
       day: '2-digit'
     });
   };
-
 
   // Estilos SerGas
   const sergasStyles = {
@@ -124,12 +133,37 @@ export default function Invoices({ onBack }) {
       document.removeEventListener('wheel', handleWheelOnNumberInputs)
     }
   }, [token])
+    // Recargar cuando cambie la cantidad de items por página
+  useEffect(() => {
+    if (token && itemsPerPage) {
+      loadInvoices(1) // Siempre volver a página 1 cuando cambias items por página
+    }
+  }, [itemsPerPage])
 
-  const loadInvoices = async () => {
+const loadInvoices = async (page = currentPage, forceSearch = null) => {
     try {
       setLoading(true)
       
-      const response = await fetch('http://localhost:3001/api/invoices', {
+      // Construir URL con parámetros
+      const params = new URLSearchParams({
+        page: page,
+        limit: itemsPerPage
+      });
+      
+      // Usar forceSearch si se proporciona, sino usar searchTerm del estado
+      const searchValue = forceSearch !== null ? forceSearch : searchTerm;
+      
+      // Agregar búsqueda si existe
+      if (searchValue && searchValue.trim() !== '') {
+        params.append('search', searchValue.trim());
+      }
+      
+      // Agregar filtro de estado si no es "all"
+      if (statusFilter && statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+      
+      const response = await fetch(`http://localhost:3001/api/invoices?${params.toString()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -140,8 +174,11 @@ export default function Invoices({ onBack }) {
       const data = await response.json()
       
       if (data.success) {
-        console.log('Facturas recibidas:', data.data.invoices);
+        console.log('Facturas recibidas:', data.data.invoices.length);
+        console.log('Paginación:', data.data.pagination);
         setInvoices(data.data.invoices)
+        setPagination(data.data.pagination)
+        setCurrentPage(page)
         setError('')
       } else {
         setError(`Error del servidor: ${data.message}`)
@@ -149,6 +186,52 @@ export default function Invoices({ onBack }) {
     } catch (error) {
       setError(`Error de conexión: ${error.message}`)
       console.error('Error completo:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+
+// Función para mostrar confirmación de eliminación
+  const confirmDeleteInvoice = (invoice) => {
+    console.log('🗑️ Intentando eliminar factura:', invoice)
+    setInvoiceToDelete(invoice)
+    setShowDeleteModal(true)
+    console.log('🗑️ Modal debería mostrarse:', true)
+  }
+
+  // Función para eliminar factura
+  const deleteInvoice = async () => {
+    if (!invoiceToDelete) return
+
+    try {
+      setLoading(true)
+      
+      const response = await fetch(`http://localhost:3001/api/invoices/${invoiceToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setShowDeleteModal(false)
+        setInvoiceToDelete(null)
+        setShowForm(false)
+        resetForm()
+        await loadInvoices()
+        setError('')
+      } else {
+        setError(data.message || 'Error al eliminar la factura')
+        setShowDeleteModal(false)
+      }
+    } catch (error) {
+      setError(`Error de conexión: ${error.message}`)
+      console.error('Error:', error)
+      setShowDeleteModal(false)
     } finally {
       setLoading(false)
     }
@@ -669,16 +752,7 @@ const handleViewOriginalInvoice = async (invoice) => {
     }
   }
 
-  const filteredInvoices = invoices.filter(invoice => {
-    const matchesSearch = invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         invoice.supplier.business_name.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesStatus = statusFilter === 'all' || 
-                         (statusFilter === 'paid' && invoice.is_paid) ||
-                         (statusFilter === 'pending' && !invoice.is_paid)
-    
-    return matchesSearch && matchesStatus
-  })
+const filteredInvoices = invoices
 
   // Componente de Botón Personalizado SerGas
   const SerGasButton = ({ 
@@ -1825,36 +1899,184 @@ const handleViewOriginalInvoice = async (invoice) => {
                 </div>
               </div>
 
-              {/* Botones de acción */}
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                <SerGasButton
-                  variant="ghost"
-                  size="large"
-                  onClick={() => {
-                    setShowForm(false)
-                    resetForm()
-                  }}
-                >
-                  Cancelar
-                </SerGasButton>
+{/* Botones de acción */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginTop: '24px'
+              }}>
+                {/* Botón Eliminar a la izquierda - Solo si está editando y no está pagada */}
+                <div>
+                 {editingInvoice && !editingInvoice.is_paid && (
+                    <SerGasButton
+                      onClick={() => confirmDeleteInvoice(editingInvoice)}
+                      variant="error"
+                      style={{
+                        background: sergasStyles.colors.error,
+                        color: sergasStyles.colors.white
+                      }}
+                    >
+                      🗑️ Eliminar Factura
+                    </SerGasButton>
+                  )}
+                </div>
 
-                <SerGasButton
-                  type="submit"
-                  variant="primary"
-                  size="large"
-                  disabled={loading}
-                >
-                  {loading ? 'Cargando...' : (editingInvoice ? 'Actualizar' : 'Cargar')} Factura
-                </SerGasButton>
+                {/* Botones Cancelar y Actualizar a la derecha */}
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <SerGasButton
+                    variant="ghost"
+                    size="large"
+                    onClick={() => {
+                      setShowForm(false)
+                      resetForm()
+                    }}
+                  >
+                    Cancelar
+                  </SerGasButton>
+
+                  <SerGasButton
+                    type="submit"
+                    variant="primary"
+                    size="large"
+                    disabled={loading}
+                  >
+                    {loading ? 'Cargando...' : (editingInvoice ? 'Actualizar' : 'Cargar')} Factura
+                  </SerGasButton>
+                </div>
               </div>
             </form>
             )}
           </div>
         </div>
+
+{/* Modal de confirmación de eliminación - DENTRO DEL FORMULARIO */}
+        {showDeleteModal && invoiceToDelete && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            backdropFilter: 'blur(4px)'
+          }}>
+            <div style={{
+              background: sergasStyles.colors.white,
+              borderRadius: '16px',
+              padding: '32px',
+              boxShadow: sergasStyles.shadows.modal,
+              width: '500px',
+              maxWidth: '90vw',
+              border: `2px solid ${sergasStyles.colors.error}40`
+            }}>
+              <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                <div style={{ 
+                  fontSize: '48px', 
+                  marginBottom: '16px'
+                }}>
+                  ⚠️
+                </div>
+                <h3 style={{ 
+                  color: sergasStyles.colors.dark, 
+                  marginBottom: '12px',
+                  fontSize: '24px',
+                  fontWeight: '700'
+                }}>
+                  Confirmar Eliminación
+                </h3>
+                <p style={{ 
+                  color: sergasStyles.colors.gray,
+                  fontSize: '16px',
+                  lineHeight: '1.5'
+                }}>
+                  ¿Está seguro de que desea eliminar esta factura?
+                </p>
+              </div>
+              
+              <div style={{ 
+                background: `linear-gradient(135deg, ${sergasStyles.colors.error}15 0%, ${sergasStyles.colors.error}25 100%)`,
+                padding: '20px',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                border: `1px solid ${sergasStyles.colors.error}40`
+              }}>
+                <p style={{ margin: '0 0 8px 0', color: sergasStyles.colors.dark, fontWeight: '600' }}>
+                  Factura: {invoiceToDelete.invoice_number}
+                </p>
+                <p style={{ margin: '0 0 8px 0', color: sergasStyles.colors.gray }}>
+                  Proveedor: {invoiceToDelete.supplier?.business_name || 'N/A'}
+                </p>
+                <p style={{ margin: '0', color: sergasStyles.colors.gray }}>
+                  Total: 
+                  <span style={{ 
+                    color: sergasStyles.colors.error, 
+                    fontWeight: 'bold', 
+                    fontSize: '18px',
+                    marginLeft: '8px'
+                  }}>
+                    ${parseFloat(invoiceToDelete.total_amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                  </span>
+                </p>
+              </div>
+
+              <div style={{
+                background: `linear-gradient(135deg, ${sergasStyles.colors.warning}15 0%, ${sergasStyles.colors.warning}25 100%)`,
+                padding: '16px',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                border: `1px solid ${sergasStyles.colors.warning}40`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '24px' }}>🚨</span>
+                <div>
+                  <strong style={{ color: sergasStyles.colors.dark, display: 'block', marginBottom: '4px' }}>
+                    Esta acción no se puede deshacer
+                  </strong>
+                  <span style={{ color: sergasStyles.colors.gray, fontSize: '14px' }}>
+                    La factura y todos sus archivos asociados serán eliminados permanentemente.
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <SerGasButton
+                  onClick={() => {
+                    setShowDeleteModal(false)
+                    setInvoiceToDelete(null)
+                  }}
+                  variant="ghost"
+                  size="large"
+                  disabled={loading}
+                >
+                  Cancelar
+                </SerGasButton>
+                
+                <SerGasButton
+                  onClick={deleteInvoice}
+                  disabled={loading}
+                  variant="error"
+                  size="large"
+                  style={{
+                    background: sergasStyles.colors.error,
+                    color: sergasStyles.colors.white
+                  }}
+                >
+                  {loading ? '⏳ Eliminando...' : '🗑️ Eliminar Factura'}
+                </SerGasButton>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
-
   return (
     <div style={{ 
       minHeight: '100vh',
@@ -1947,14 +2169,20 @@ const handleViewOriginalInvoice = async (invoice) => {
           border: `1px solid ${sergasStyles.colors.primary}20`
         }}>
           <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: '300px' }}>
+<div style={{ flex: 1, minWidth: '300px', display: 'flex', gap: '12px' }}>
               <input
                 type="text"
-                placeholder="Buscar por número de factura o proveedor..."
+               placeholder="Buscar por número de factura, proveedor o CUIT..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyUp={(e) => {
+                  if (e.key === 'Enter') {
+                    setCurrentPage(1);
+                    loadInvoices(1);
+                  }
+                }}
                 style={{
-                  width: '100%',
+                  flex: 1,
                   padding: '12px 16px',
                   border: `2px solid ${sergasStyles.colors.primary}40`,
                   borderRadius: '8px',
@@ -1963,6 +2191,27 @@ const handleViewOriginalInvoice = async (invoice) => {
                   color: sergasStyles.colors.dark
                 }}
               />
+              <SerGasButton
+                onClick={() => {
+                  setCurrentPage(1);
+                  loadInvoices(1);
+                }}
+                variant="primary"
+              >
+                🔍 Buscar
+              </SerGasButton>
+              {searchTerm && (
+                <SerGasButton
+                  onClick={() => {
+                    setSearchTerm('');
+                    setCurrentPage(1);
+                    loadInvoices(1, ''); // Pasar string vacío para forzar búsqueda sin término
+                  }}
+                  variant="ghost"
+                >
+                  ✕ Limpiar
+                </SerGasButton>
+              )}
             </div>
 
             <select
@@ -2292,9 +2541,120 @@ const handleViewOriginalInvoice = async (invoice) => {
                 </table>
               </div>
             )}
+
+{/* Controles de Paginación */}
+            {!loading && filteredInvoices.length > 0 && (
+              <div style={{
+                background: sergasStyles.colors.white,
+                borderRadius: '0 0 12px 12px',
+                padding: '20px 32px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                borderTop: `1px solid ${sergasStyles.colors.primary}20`
+              }}>
+                {/* Información de página */}
+                <div style={{ 
+                  fontSize: '14px', 
+                  color: sergasStyles.colors.gray,
+                  fontWeight: '500'
+                }}>
+                  Mostrando {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, pagination.total)} de {pagination.total} facturas
+                </div>
+
+                {/* Controles de navegación */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {/* Botón Primera Página */}
+                  <SerGasButton
+                    onClick={() => loadInvoices(1)}
+                    disabled={!pagination.hasPrevPage}
+                    variant="outline"
+                    size="small"
+                  >
+                    ⏮️
+                  </SerGasButton>
+
+                  {/* Botón Página Anterior */}
+                  <SerGasButton
+                    onClick={() => loadInvoices(currentPage - 1)}
+                    disabled={!pagination.hasPrevPage}
+                    variant="outline"
+                    size="small"
+                  >
+                    ← Anterior
+                  </SerGasButton>
+
+                  {/* Indicador de página actual */}
+                  <div style={{
+                    padding: '8px 16px',
+                    background: sergasStyles.gradients.primary,
+                    borderRadius: '8px',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    color: sergasStyles.colors.dark,
+                    minWidth: '80px',
+                    textAlign: 'center'
+                  }}>
+                    {currentPage} / {pagination.totalPages}
+                  </div>
+
+                  {/* Botón Página Siguiente */}
+                  <SerGasButton
+                    onClick={() => loadInvoices(currentPage + 1)}
+                    disabled={!pagination.hasNextPage}
+                    variant="outline"
+                    size="small"
+                  >
+                    Siguiente →
+                  </SerGasButton>
+
+                  {/* Botón Última Página */}
+                  <SerGasButton
+                    onClick={() => loadInvoices(pagination.totalPages)}
+                    disabled={!pagination.hasNextPage}
+                    variant="outline"
+                    size="small"
+                  >
+                    ⏭️
+                  </SerGasButton>
+                </div>
+
+                {/* Selector de items por página */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ 
+                    fontSize: '14px', 
+                    color: sergasStyles.colors.gray,
+                    fontWeight: '500'
+                  }}>
+                    Por página:
+                  </span>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      setItemsPerPage(parseInt(e.target.value))
+                      setCurrentPage(1)
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      border: `2px solid ${sergasStyles.colors.primary}40`,
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      backgroundColor: sergasStyles.colors.white,
+                      color: sergasStyles.colors.dark,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
         )}
-
         {/* Modal para comprobante de pago */}
         {showPaymentModal && (
           <div style={{
@@ -2424,15 +2784,142 @@ const handleViewOriginalInvoice = async (invoice) => {
             </div>
           </div>
         )}
+
+        {console.log('🔍 showDeleteModal:', showDeleteModal, 'invoiceToDelete:', invoiceToDelete)}
       </div>
 
-      {/* Agregar animación de loading */}
+{/* Agregar animación de loading */}
       <style>{`
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
       `}</style>
+
+      {/* Modal de confirmación de eliminación */}
+      {showDeleteModal && invoiceToDelete && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{
+            background: sergasStyles.colors.white,
+            borderRadius: '16px',
+            padding: '32px',
+            boxShadow: sergasStyles.shadows.modal,
+            width: '500px',
+            maxWidth: '90vw',
+            border: `2px solid ${sergasStyles.colors.error}40`
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{ 
+                fontSize: '48px', 
+                marginBottom: '16px'
+              }}>
+                ⚠️
+              </div>
+              <h3 style={{ 
+                color: sergasStyles.colors.dark, 
+                marginBottom: '12px',
+                fontSize: '24px',
+                fontWeight: '700'
+              }}>
+                Confirmar Eliminación
+              </h3>
+              <p style={{ 
+                color: sergasStyles.colors.gray,
+                fontSize: '16px',
+                lineHeight: '1.5'
+              }}>
+                ¿Está seguro de que desea eliminar esta factura?
+              </p>
+            </div>
+            
+            <div style={{ 
+              background: `linear-gradient(135deg, ${sergasStyles.colors.error}15 0%, ${sergasStyles.colors.error}25 100%)`,
+              padding: '20px',
+              borderRadius: '12px',
+              marginBottom: '24px',
+              border: `1px solid ${sergasStyles.colors.error}40`
+            }}>
+              <p style={{ margin: '0 0 8px 0', color: sergasStyles.colors.dark, fontWeight: '600' }}>
+                Factura: {invoiceToDelete.invoice_number}
+              </p>
+              <p style={{ margin: '0 0 8px 0', color: sergasStyles.colors.gray }}>
+                Proveedor: {invoiceToDelete.supplier?.business_name || 'N/A'}
+              </p>
+              <p style={{ margin: '0', color: sergasStyles.colors.gray }}>
+                Total: 
+                <span style={{ 
+                  color: sergasStyles.colors.error, 
+                  fontWeight: 'bold', 
+                  fontSize: '18px',
+                  marginLeft: '8px'
+                }}>
+                  ${parseFloat(invoiceToDelete.total_amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}
+                </span>
+              </p>
+            </div>
+
+            <div style={{
+              background: `linear-gradient(135deg, ${sergasStyles.colors.warning}15 0%, ${sergasStyles.colors.warning}25 100%)`,
+              padding: '16px',
+              borderRadius: '12px',
+              marginBottom: '24px',
+              border: `1px solid ${sergasStyles.colors.warning}40`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <span style={{ fontSize: '24px' }}>🚨</span>
+              <div>
+                <strong style={{ color: sergasStyles.colors.dark, display: 'block', marginBottom: '4px' }}>
+                  Esta acción no se puede deshacer
+                </strong>
+                <span style={{ color: sergasStyles.colors.gray, fontSize: '14px' }}>
+                  La factura y todos sus archivos asociados serán eliminados permanentemente.
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <SerGasButton
+                onClick={() => {
+                  setShowDeleteModal(false)
+                  setInvoiceToDelete(null)
+                }}
+                variant="ghost"
+                size="large"
+                disabled={loading}
+              >
+                Cancelar
+              </SerGasButton>
+              
+              <SerGasButton
+                onClick={deleteInvoice}
+                disabled={loading}
+                variant="error"
+                size="large"
+                style={{
+                  background: sergasStyles.colors.error,
+                  color: sergasStyles.colors.white
+                }}
+              >
+                {loading ? '⏳ Eliminando...' : '🗑️ Eliminar Factura'}
+              </SerGasButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

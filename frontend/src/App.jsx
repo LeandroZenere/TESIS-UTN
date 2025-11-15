@@ -6,6 +6,7 @@ import Invoices from './components/Invoices'
 import Settings from './components/Settings'
 import ExpenseCategories from './components/ExpenseCategories'
 import Reports from './components/Reports'
+import Alerts from './components/Alerts'
 
 function AppContent() {
   const { user, loading, logout, token } = useAuth()
@@ -20,6 +21,7 @@ function AppContent() {
     paidInvoices: 0
   })
   const [statsLoading, setStatsLoading] = useState(true)
+  const [alertsCount, setAlertsCount] = useState(0)
 
   // Estilos SerGas (mantener igual)
   const sergasStyles = {
@@ -79,10 +81,34 @@ function AppContent() {
     }
   }
 
+   // Función para cargar contador de alertas
+  const loadAlertsCount = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/invoices/alerts/due-soon', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        // Contar solo vencidas + urgentes para el badge
+        const criticalCount = data.data.overdue.count + data.data.urgent.count
+        setAlertsCount(criticalCount)
+      }
+    } catch (error) {
+      console.error('Error cargando alertas:', error)
+    }
+  }
+
   // AGREGAR: useEffect para cargar estadísticas
   useEffect(() => {
     if (user && token && currentView === 'dashboard') {
       loadDashboardStats()
+      loadAlertsCount()
     }
   }, [user, token, currentView])
 
@@ -240,6 +266,11 @@ function AppContent() {
     if (currentView === 'reports') {
     return <Reports onBack={() => setCurrentView('dashboard')} />
   }
+
+    if (currentView === 'alerts') {
+    return <Alerts onBack={() => setCurrentView('dashboard')} />
+  }
+
   return (
     <div style={{ 
       minHeight: '100vh', 
@@ -330,6 +361,50 @@ function AppContent() {
             </span>
           </div>
           
+ {/* Botón Alertas con animación */}
+          {currentView === 'dashboard' && user.role === 'admin' && (
+            <div style={{ position: 'relative' }}>
+              <SerGasButton 
+                onClick={() => setCurrentView('alerts')} 
+                variant="secondary"
+                size="small"
+                style={{
+                  background: alertsCount > 0 
+                    ? 'linear-gradient(135deg, #E53E3E 0%, #DC2626 100%)'
+                    : sergasStyles.gradients.secondary,
+                  animation: alertsCount > 0 ? 'alertPulse 10s infinite' : 'none',
+                  boxShadow: alertsCount > 0 
+                    ? '0 4px 12px rgba(229, 62, 62, 0.4)' 
+                    : sergasStyles.shadows.button
+                }}
+              >
+                🔔
+              </SerGasButton>
+              {alertsCount > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '-8px',
+                  right: '-8px',
+                  background: sergasStyles.colors.error,
+                  color: sergasStyles.colors.white,
+                  borderRadius: '50%',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  border: `2px solid ${sergasStyles.colors.white}`,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                  animation: 'badgePulse 2s infinite'
+                }}>
+                  {alertsCount > 9 ? '9+' : alertsCount}
+                </div>
+              )}
+            </div>
+          )}
+
         {/* Botón Configuración - Solo para Admin */}
           {user?.role === 'admin' && currentView === 'dashboard' && (
             <SerGasButton 
@@ -498,6 +573,7 @@ function AppContent() {
             </div>
             
             {/* Tarjeta Reportes */}
+            {user.role === 'admin' && (
             <div style={{ 
               background: sergasStyles.colors.white,
               padding: '32px',
@@ -554,8 +630,10 @@ function AppContent() {
                 Ver Reportes
               </SerGasButton>
             </div>
+             )}
           </div>
           
+
           {/* MODIFICAR: Sección de estadísticas rápidas con datos reales */}
           {/* Sección de estadísticas rápidas - SOLO VISIBLE PARA ADMIN */}
         {user?.role === 'admin' && (
@@ -695,10 +773,43 @@ function AppContent() {
   </main>
 
       {/* Animaciones CSS */}
-      <style>{`
+<style>{`
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes alertPulse {
+          0%, 100% { 
+            background: linear-gradient(135deg, #E53E3E 0%, #DC2626 100%);
+            transform: scale(1);
+          }
+          10% {
+            background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+            transform: scale(1.05);
+          }
+          20%, 80% { 
+            background: linear-gradient(135deg, #E53E3E 0%, #DC2626 100%);
+            transform: scale(1);
+          }
+          90% {
+            background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+            transform: scale(1.05);
+          }
+        }
+        
+        @keyframes badgePulse {
+          0%, 100% { 
+            transform: scale(1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          }
+          50% { 
+            transform: scale(1.15);
+            box-shadow: 0 4px 12px rgba(229, 62, 62, 0.5);
+          }
+            10% {
+            transform: scale(1.05) rotate(-5deg);
+          }
         }
       `}</style>
     </div>

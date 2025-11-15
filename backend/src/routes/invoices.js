@@ -55,11 +55,70 @@ router.get('/original-file/:filename', (req, res) => {
   }
 });
 
-// Aplicar autenticación a todas las rutas
+// Debug endpoint sin autenticación
+router.get('/debug/all-invoices', async (req, res) => {
+  try {
+    const invoices = await Invoice.findAll({
+      include: [
+        {
+          model: Supplier,
+          as: 'supplier',
+          required: false,
+          attributes: ['id', 'business_name', 'is_active']
+        }
+      ],
+      attributes: ['id', 'invoice_number', 'supplier_id', 'is_paid', 'total_amount', 'createdAt'],
+      order: [['createdAt', 'DESC']]
+    });
+
+    console.log('\n📊 ===== TODAS LAS FACTURAS EN LA BASE DE DATOS =====');
+    console.log('Total de facturas:', invoices.length);
+    console.log('Pendientes (is_paid=false):', invoices.filter(i => !i.is_paid).length);
+    console.log('Pagadas (is_paid=true):', invoices.filter(i => i.is_paid).length);
+    console.log('\n📋 DETALLE:');
+    
+    invoices.forEach((inv, index) => {
+      const supplierInfo = inv.supplier 
+        ? `${inv.supplier.business_name} (${inv.supplier.is_active ? 'ACTIVO' : 'INACTIVO'})`
+        : '⚠️ SIN PROVEEDOR';
+      
+      console.log(`\n${index + 1}. ID: ${inv.id} | ${inv.invoice_number}`);
+      console.log(`   Proveedor: ${supplierInfo}`);
+      console.log(`   Estado: ${inv.is_paid ? '✅ PAGADA' : '⏳ PENDIENTE'}`);
+      console.log(`   Total: $${parseFloat(inv.total_amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })}`);
+      console.log(`   Fecha: ${inv.createdAt}`);
+    });
+
+    console.log('\n===== FIN DEL DEBUG =====\n');
+
+    res.json({
+      success: true,
+      total: invoices.length,
+      pendientes: invoices.filter(i => !i.is_paid).length,
+      pagadas: invoices.filter(i => i.is_paid).length,
+      data: invoices.map(inv => ({
+        id: inv.id,
+        invoice_number: inv.invoice_number,
+        supplier: inv.supplier?.business_name || 'SIN PROVEEDOR',
+        supplier_active: inv.supplier?.is_active,
+        is_paid: inv.is_paid,
+        total_amount: inv.total_amount
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Error en debug:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// Aplicar autenticación al resto de rutas
 router.use(authenticateToken);
 
-
-// GET /api/invoices - Listar todas las facturas
+// GET /api/invoices - Listar todas las facturas con paginación y búsqueda
 router.get('/', async (req, res) => {
   try {
     const { 
@@ -90,15 +149,9 @@ router.get('/', async (req, res) => {
       if (date_from) where.invoice_date[Op.gte] = date_from;
       if (date_to) where.invoice_date[Op.lte] = date_to;
     }
-    
-    // Búsqueda por número de factura - CORREGIDO
-    if (search) {
-      where.invoice_number = { [Op.like]: `%${search}%` };
-    }
 
-    const offset = (page - 1) * limit;
-    
-    const { count, rows } = await Invoice.findAndCountAll({
+    // PASO 1: Obtener TODAS las facturas sin paginación
+    const allInvoices = await Invoice.findAll({
       where,
       include: [
         {
@@ -118,20 +171,58 @@ router.get('/', async (req, res) => {
           required: false
         }
       ],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
       order: [['created_at', 'DESC']]
     });
+
+    // PASO 2: Aplicar filtro de búsqueda en TODAS las facturas
+    let filteredInvoices = allInvoices;
+    
+    if (search && search.trim() !== '') {
+      const searchTerm = search.trim();
+      const searchLower = searchTerm.toLowerCase();
+      // Normalizar búsqueda quitando guiones para CUIT
+      const searchNormalized = searchTerm.replace(/[-\s]/g, '');
+      
+      filteredInvoices = allInvoices.filter(invoice => {
+        // Buscar en número de factura (exacto y parcial)
+        const matchInvoiceNumber = invoice.invoice_number.toLowerCase().includes(searchLower);
+        
+        // Buscar en nombre de proveedor (parcial)
+        const matchSupplierName = invoice.supplier?.business_name.toLowerCase().includes(searchLower);
+        
+        // Buscar en CUIT (con y sin guiones)
+        const invoiceCuit = invoice.supplier?.cuit || '';
+        const cuitNormalized = invoiceCuit.replace(/[-\s]/g, '');
+        const matchCuit = cuitNormalized.includes(searchNormalized) || invoiceCuit.includes(searchTerm);
+        
+        return matchInvoiceNumber || matchSupplierName || matchCuit;
+      });
+      
+      console.log(`🔍 Búsqueda "${searchTerm}": ${filteredInvoices.length} facturas encontradas de ${allInvoices.length} totales`);
+    }
+
+    // PASO 3: Calcular la paginación DESPUÉS del filtrado
+    const totalFiltered = filteredInvoices.length;
+    const totalPages = Math.ceil(totalFiltered / parseInt(limit));
+    const currentPage = parseInt(page);
+    const offset = (currentPage - 1) * parseInt(limit);
+    
+    // PASO 4: Aplicar la paginación a los resultados filtrados
+    const paginatedInvoices = filteredInvoices.slice(offset, offset + parseInt(limit));
+
+    console.log(`📋 Página ${currentPage}: Mostrando ${paginatedInvoices.length} de ${totalFiltered} facturas`);
 
     res.json({
       success: true,
       data: {
-        invoices: rows,
+        invoices: paginatedInvoices,
         pagination: {
-          total: count,
-          page: parseInt(page),
+          total: totalFiltered,
+          page: currentPage,
           limit: parseInt(limit),
-          totalPages: Math.ceil(count / limit)
+          totalPages: totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
         }
       }
     });
@@ -858,7 +949,7 @@ doc.fillColor('#1A1A1A')
                 align: 'center'
               });
               
-              console.log('Imagen insertada correctamente en página dedicada');
+              console.log('Imagen insertada correctamente');
             } catch (imgError) {
               console.error('Error cargando imagen:', imgError);
               doc.fillColor('#E53E3E')
@@ -1033,9 +1124,6 @@ router.get('/reports/summary', async (req, res) => {
       previousPeriodEnd = new Date(previousYear, previousMonth, 0).toISOString().split('T')[0];
     }
 
-    console.log('🔍 Período de consulta:', { dateStart, dateEnd, period });
-    console.log('🔍 Tipo de fecha:', dateType); 
-    console.log('🔍 Filtro aplicado:', dateType === 'payment' ? 'paid_date' : 'invoice_date');
     // Resumen del período actual por categoría
 const whereClause = dateType === 'payment'
       ? {
@@ -1049,8 +1137,6 @@ const whereClause = dateType === 'payment'
             [Op.between]: [dateStart, dateEnd]
           }
         };
-
-    console.log('🔍 WHERE Clause para summary:', JSON.stringify(whereClause, null, 2));
 
     const summary = await Invoice.findAll({
       where: whereClause,
@@ -1433,6 +1519,176 @@ router.get('/reports/category-comparison', async (req, res) => {
 
   } catch (error) {
     console.error('Error en comparación de categorías:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// GET /api/invoices/alerts/due-soon - Facturas próximas a vencer
+router.get('/alerts/due-soon', async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // Obtener facturas no pagadas con fecha de vencimiento
+    const allUnpaidInvoices = await Invoice.findAll({
+      where: {
+        is_paid: false,
+        due_date: {
+          [Op.ne]: null
+        }
+      },
+      include: [
+        {
+          model: Supplier,
+          as: 'supplier',
+          attributes: ['id', 'business_name', 'cuit']
+        }
+      ],
+      order: [['due_date', 'ASC']],
+      attributes: [
+        'id',
+        'invoice_number',
+        'due_date',
+        'total_amount',
+        'invoice_date',
+        'expense_category',
+        'notes'
+      ]
+    });
+
+    // Clasificar facturas por urgencia
+    const overdue = [];
+    const urgent = []; // Vencen en 7 días o menos
+    const upcoming = []; // Vencen en 30 días o menos
+
+    allUnpaidInvoices.forEach(invoice => {
+      const dueDate = new Date(invoice.due_date);
+      dueDate.setHours(0, 0, 0, 0);
+      
+      const diffTime = dueDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      const invoiceData = {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        supplier_name: invoice.supplier?.business_name || 'Sin proveedor',
+        supplier_id: invoice.supplier?.id,
+        due_date: invoice.due_date,
+        days_until_due: diffDays,
+        total_amount: parseFloat(invoice.total_amount),
+        category: invoice.expense_category,
+        invoice_date: invoice.invoice_date,
+        notes: invoice.notes
+      };
+
+      if (diffDays < 0) {
+        // Vencidas
+        overdue.push(invoiceData);
+      } else if (diffDays <= 7) {
+        // Urgentes (7 días o menos)     
+        urgent.push(invoiceData);
+      } else if (diffDays <= 200) {
+        // Próximas (30 días o menos)     
+        upcoming.push(invoiceData);
+      }
+    });
+
+    // Calcular totales
+    const overdueTotal = overdue.reduce((sum, inv) => sum + inv.total_amount, 0);
+    const urgentTotal = urgent.reduce((sum, inv) => sum + inv.total_amount, 0);
+    const upcomingTotal = upcoming.reduce((sum, inv) => sum + inv.total_amount, 0);
+
+    res.json({
+      success: true,
+      data: {
+        overdue: {
+          count: overdue.length,
+          total: overdueTotal,
+          invoices: overdue
+        },
+        urgent: {
+          count: urgent.length,
+          total: urgentTotal,
+          invoices: urgent
+        },
+        upcoming: {
+          count: upcoming.length,
+          total: upcomingTotal,
+          invoices: upcoming
+        },
+        summary: {
+          total_count: overdue.length + urgent.length + upcoming.length,
+          total_amount: overdueTotal + urgentTotal + upcomingTotal
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo alertas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// DELETE /api/invoices/:id - Eliminar factura (solo si no está pagada)
+router.delete('/:id', async (req, res) => {
+  try {
+    const invoice = await Invoice.findByPk(req.params.id);
+    
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: 'Factura no encontrada'
+      });
+    }
+
+    // Verificar que la factura no esté pagada
+    if (invoice.is_paid) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se puede eliminar una factura que ya está pagada'
+      });
+    }
+
+    // Verificar permisos: admin puede eliminar cualquier factura, usuario solo las propias
+    if (req.user.role !== 'admin' && invoice.created_by !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para eliminar esta factura'
+      });
+    }
+
+    // Eliminar archivos asociados si existen
+    if (invoice.original_invoice) {
+      const originalPath = path.join(__dirname, '../../uploads/originals', invoice.original_invoice);
+      if (fs.existsSync(originalPath)) {
+        fs.unlinkSync(originalPath);
+        console.log('Archivo original eliminado:', invoice.original_invoice);
+      }
+    }
+
+    if (invoice.payment_proof) {
+      const paymentPath = path.join(__dirname, '../../uploads/payments', invoice.payment_proof);
+      if (fs.existsSync(paymentPath)) {
+        fs.unlinkSync(paymentPath);
+        console.log('Comprobante de pago eliminado:', invoice.payment_proof);
+      }
+    }
+
+    // Eliminar la factura de la base de datos
+    await invoice.destroy();
+
+    res.json({
+      success: true,
+      message: 'Factura eliminada exitosamente'
+    });
+
+  } catch (error) {
+    console.error('Error eliminando factura:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'
