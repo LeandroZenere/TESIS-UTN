@@ -124,7 +124,7 @@ router.get('/', async (req, res) => {
     const { 
       page = 1, 
       limit = 10, 
-      status = 'all', 
+      is_paid, 
       supplier_id,
       date_from,
       date_to,
@@ -133,10 +133,10 @@ router.get('/', async (req, res) => {
     
     const where = {};
     
-    // Filtrar por estado
-    if (status !== 'all') {
-      where.status = status;
-    }
+  // Filtrar por estado de pago
+  if (is_paid !== undefined) {
+    where.is_paid = is_paid === 'true';  // Convertir string a boolean
+  }
     
     // Filtrar por proveedor
     if (supplier_id) {

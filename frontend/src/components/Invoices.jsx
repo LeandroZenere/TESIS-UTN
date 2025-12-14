@@ -27,6 +27,11 @@ export default function Invoices({ onBack }) {
     hasNextPage: false,
     hasPrevPage: false
   })
+const [showSupplierSearch, setShowSupplierSearch] = useState(false)
+const [supplierSearchType, setSupplierSearchType] = useState('name') // 'id', 'cuit', 'name'
+const [supplierSearchTerm, setSupplierSearchTerm] = useState('')
+const [filteredSuppliers, setFilteredSuppliers] = useState([])
+
   const getLocalDateString = () => { //OBTENER FECHAS
   const now = new Date();
   const year = now.getFullYear();
@@ -160,7 +165,11 @@ const loadInvoices = async (page = currentPage, forceSearch = null) => {
       
       // Agregar filtro de estado si no es "all"
       if (statusFilter && statusFilter !== 'all') {
-        params.append('status', statusFilter);
+        if (statusFilter === 'pending') {
+          params.append('is_paid', 'false');
+        } else if (statusFilter === 'paid') {
+          params.append('is_paid', 'true');
+        }
       }
       
       const response = await fetch(`http://localhost:3001/api/invoices?${params.toString()}`, {
@@ -256,6 +265,30 @@ const loadInvoices = async (page = currentPage, forceSearch = null) => {
       console.error('Error cargando proveedores:', error)
     }
   }
+
+  const searchSuppliers = (searchTerm, searchType) => {
+  if (!searchTerm || searchTerm.trim() === '') {
+    setFilteredSuppliers([])
+    return
+  }
+
+  const term = searchTerm.toLowerCase().trim()
+  
+  const results = suppliers.filter(supplier => {
+    switch (searchType) {
+      case 'id':
+        return supplier.id.toString().includes(term)
+      case 'cuit':
+        return supplier.cuit.replace(/-/g, '').includes(term.replace(/-/g, ''))
+      case 'name':
+        return supplier.business_name.toLowerCase().includes(term)
+      default:
+        return false
+    }
+  })
+  
+  setFilteredSuppliers(results)
+}
 
   const calculateTotal = () => {
     const taxesTotal = formData.tax_details.reduce((sum, tax) => sum + parseFloat(tax.amount || 0), 0)
@@ -1225,31 +1258,235 @@ const filteredInvoices = invoices
                     }}>
                       Proveedor *
                     </label>
-                    <select
-                      value={formData.supplier_id}
-                      onChange={handleSupplierChange}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        border: `2px solid ${sergasStyles.colors.primary}40`,
-                        borderRadius: '8px',
+                    
+                    {/* Input principal que muestra el proveedor seleccionado */}
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        placeholder="Buscar proveedor por ID, CUIT o Razón Social..."
+                        value={
+                          formData.supplier_id 
+                            ? suppliers.find(s => s.id === parseInt(formData.supplier_id))?.business_name || '' 
+                            : supplierSearchTerm
+                        }
+                        onChange={(e) => {
+                          setSupplierSearchTerm(e.target.value)
+                          searchSuppliers(e.target.value, supplierSearchType)
+                        }}
+                        onFocus={() => {
+                          setShowSupplierSearch(true)
+                          setFilteredSuppliers([])
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '12px 16px',
+                          border: `2px solid ${sergasStyles.colors.primary}40`,
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          backgroundColor: sergasStyles.colors.white,
+                          color: sergasStyles.colors.dark,
+                          cursor: 'text'
+                        }}
+                        required
+                      />
+                      
+                      {/* Dropdown que aparece al hacer focus */}
+                      {showSupplierSearch && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          marginTop: '8px',
+                          backgroundColor: sergasStyles.colors.white,
+                          border: `2px solid ${sergasStyles.colors.primary}40`,
+                          borderRadius: '8px',
+                          boxShadow: sergasStyles.shadows.modal,
+                          zIndex: 1000,
+                          maxHeight: '400px',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          flexDirection: 'column'
+                        }}>
+                          {/* Tabs de tipo de búsqueda */}
+                          <div style={{
+                            display: 'flex',
+                            borderBottom: `2px solid ${sergasStyles.colors.primary}20`,
+                            backgroundColor: sergasStyles.colors.lightGray
+                          }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSupplierSearchType('name')
+                                searchSuppliers(supplierSearchTerm, 'name')
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '12px',
+                                border: 'none',
+                                backgroundColor: supplierSearchType === 'name' ? sergasStyles.colors.primary : 'transparent',
+                                color: supplierSearchType === 'name' ? sergasStyles.colors.dark : sergasStyles.colors.gray,
+                                fontWeight: supplierSearchType === 'name' ? '600' : '400',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              📝 Razón Social
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSupplierSearchType('cuit')
+                                searchSuppliers(supplierSearchTerm, 'cuit')
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '12px',
+                                border: 'none',
+                                backgroundColor: supplierSearchType === 'cuit' ? sergasStyles.colors.primary : 'transparent',
+                                color: supplierSearchType === 'cuit' ? sergasStyles.colors.dark : sergasStyles.colors.gray,
+                                fontWeight: supplierSearchType === 'cuit' ? '600' : '400',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              🔢 CUIT
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSupplierSearchType('id')
+                                searchSuppliers(supplierSearchTerm, 'id')
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '12px',
+                                border: 'none',
+                                backgroundColor: supplierSearchType === 'id' ? sergasStyles.colors.primary : 'transparent',
+                                color: supplierSearchType === 'id' ? sergasStyles.colors.dark : sergasStyles.colors.gray,
+                                fontWeight: supplierSearchType === 'id' ? '600' : '400',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              🆔 ID
+                            </button>
+                          </div>
+                          
+                          {/* Lista de resultados */}
+                          <div style={{
+                            overflowY: 'auto',
+                            maxHeight: '300px'
+                          }}>
+                            {filteredSuppliers.length > 0 ? (
+                              filteredSuppliers.map(supplier => (
+                                <div
+                                  key={supplier.id}
+                                  onClick={() => {
+                                    const event = { target: { value: supplier.id.toString() } }
+                                    handleSupplierChange(event)
+                                    setShowSupplierSearch(false)
+                                    setSupplierSearchTerm('')
+                                  }}
+                                  style={{
+                                    padding: '12px 16px',
+                                    cursor: 'pointer',
+                                    borderBottom: `1px solid ${sergasStyles.colors.primary}10`,
+                                    transition: 'background 0.2s',
+                                    backgroundColor: formData.supplier_id === supplier.id.toString() 
+                                      ? `${sergasStyles.colors.primary}20` 
+                                      : 'transparent'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = `${sergasStyles.colors.primary}15`}
+                                  onMouseLeave={(e) => {
+                                    if (formData.supplier_id !== supplier.id.toString()) {
+                                      e.currentTarget.style.backgroundColor = 'transparent'
+                                    }
+                                  }}
+                                >
+                                  <div style={{ fontWeight: '600', color: sergasStyles.colors.dark, marginBottom: '4px' }}>
+                                    {supplier.business_name}
+                                  </div>
+                                  <div style={{ fontSize: '12px', color: sergasStyles.colors.gray }}>
+                                    CUIT: {supplier.cuit} • ID: {supplier.id} • {supplier.fiscal_category}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{
+                                padding: '20px',
+                                textAlign: 'center',
+                                color: sergasStyles.colors.gray
+                              }}>
+                                {supplierSearchTerm 
+                                  ? 'No se encontraron proveedores' 
+                                  : 'Escriba para buscar proveedores...'
+                                }
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Botón cerrar */}
+                          <div style={{
+                            padding: '12px',
+                            borderTop: `1px solid ${sergasStyles.colors.primary}20`,
+                            textAlign: 'center'
+                          }}>
+                            <button
+                              type="button"
+                              onClick={() => setShowSupplierSearch(false)}
+                              style={{
+                                padding: '8px 16px',
+                                border: 'none',
+                                backgroundColor: 'transparent',
+                                color: sergasStyles.colors.gray,
+                                cursor: 'pointer',
+                                fontSize: '14px'
+                              }}
+                            >
+                              Cerrar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Mostrar proveedor seleccionado */}
+                    {formData.supplier_id && selectedSupplier && (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '8px 12px',
+                        backgroundColor: `${sergasStyles.colors.success}15`,
+                        borderRadius: '6px',
                         fontSize: '14px',
-                        backgroundColor: sergasStyles.colors.white,
-                        color: sergasStyles.colors.dark
-                      }}
-                      required
-                    >
-                      <option value="">Seleccionar proveedor</option>
-                      {suppliers.map(supplier => (
-                        <option key={supplier.id} value={supplier.id}>
-                          {supplier.business_name} - {supplier.cuit}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedSupplier && (
-                      <small style={{ color: sergasStyles.colors.gray, fontSize: '12px' }}>
-                        Categoría: {selectedSupplier.category}
-                      </small>
+                        color: sergasStyles.colors.dark,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}>
+                        <span>
+                          ✅ <strong>{selectedSupplier.business_name}</strong> - {selectedSupplier.cuit}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData({...formData, supplier_id: ''})
+                            setSelectedSupplier(null)
+                            setSupplierSearchTerm('')
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            border: 'none',
+                            backgroundColor: 'transparent',
+                            color: sergasStyles.colors.error,
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: '600'
+                          }}
+                        >
+                          ✕ Cambiar
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -1701,8 +1938,8 @@ const filteredInvoices = invoices
                     }}>
                       <span style={{ fontSize: '16px' }}>💡</span>
                       <div>
-                        <strong>Sugerencia:</strong> Las facturas tipo {formData.invoice_type} de {selectedSupplier.category === 'monotributista' ? 'Monotributistas' : 'IVA Exentos'} 
-                        generalmente no incluyen IVA ni percepciones. El importe total suele cargarse completo en "No Gravado".
+                        <strong>Sugerencia:</strong> Las facturas tipo {formData.invoice_type} de {selectedSupplier.category === 'monotributista' ? 'Monotributistas ' : 'IVA Exentos '} 
+                         generalmente no incluyen IVA ni percepciones. El importe total suele cargarse completo en "No Gravado".
                       </div>
                     </div>
                   )}
